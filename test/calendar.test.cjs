@@ -539,3 +539,115 @@ test('templates are scoped per user and can be deleted', () => {
   assert.equal(card._readEventTemplates().length, 0);
   dom.window.close();
 });
+
+test('curated event icons round-trip between MDI and Unicode titles', () => {
+  const { card, dom } = setup();
+  const choices = [
+    ['mdi:drama-masks', '🎭'], ['mdi:music', '🎵'], ['mdi:tennis-ball', '🎾'],
+    ['mdi:sail-boat', '⛵'], ['mdi:soccer', '⚽'], ['mdi:run', '🏃'],
+    ['mdi:cat', '🐱'], ['mdi:dog', '🐶'], ['mdi:school', '🏫']
+  ];
+  for (const [icon, emoji] of choices) {
+    assert.equal(card._eventSummaryWithIcon('Lesson', icon), `${emoji} Lesson`);
+    const parsed = card._parseEventTitle(`${emoji} Lesson`);
+    assert.equal(parsed.eventIcon, icon);
+    assert.equal(parsed.summary, 'Lesson');
+  }
+  assert.equal(card._parseEventTitle('⛵️ Sailing').eventIcon, 'mdi:sail-boat');
+  assert.equal(card._parseEventTitle('🏃🏽 Running').summary, '🏃🏽 Running');
+  assert.equal(card._parseEventTitle('🦄 Unicorn').eventIcon, '');
+  assert.equal(card._eventSummaryWithIcon('Lesson', 'mdi:atom'), '[mdi:atom] Lesson');
+  assert.equal(card._parseEventTitle('[mdi:atom] Lesson').eventIcon, 'mdi:atom');
+  dom.window.close();
+});
+
+test('event creation stores Unicode in summary, preserves description and avoids duplicate prefixes', () => {
+  const { card, dom } = setup();
+  const values = { ...seriesValues(), entity: 'calendar.work', eventIcon: 'mdi:tennis-ball', description: 'Bring a racket' };
+  assert.equal(card._eventServiceData(values).summary, '🎾 Class');
+  assert.equal(card._eventServiceData(values).description, 'Bring a racket');
+  assert.equal(card._eventServiceData({ ...values, summary: '🎾 Class' }).summary, '🎾 Class');
+  assert.equal(card._eventServiceData({ ...values, summary: '🎾 🎵 Class' }).summary, '🎾 🎵 Class');
+  assert.equal(card._eventServiceData({ ...values, eventIcon: '', summary: '🐱 Vet' }).summary, '🐱 Vet');
+  assert.throws(() => card._eventServiceData({ ...values, eventIcon: 'mdi:tennis-ball" onclick="bad' }), /MDI/);
+  assert.throws(() => card._eventServiceData({ ...values, summary: '🎾 ' }), /Enter an event title/);
+  dom.window.close();
+});
+
+test('icon buttons update title immediately and typing Unicode selects MDI in reverse', () => {
+  const { card, window, dom } = setup();
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Tennis';
+  form.querySelector('[data-icon-choice="mdi:tennis-ball"]').click();
+  assert.equal(form.elements.summary.value, '🎾 Tennis');
+  assert.equal(form.elements.eventIcon.value, 'mdi:tennis-ball');
+  form.elements.summary.value = '🎭 Theatre';
+  form.elements.summary.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(form.elements.eventIcon.value, 'mdi:drama-masks');
+  form.querySelector('[data-icon-choice=""]').click();
+  assert.equal(form.elements.summary.value, 'Theatre');
+  assert.equal(form.elements.eventIcon.value, '');
+  dom.window.close();
+});
+
+test('Unicode event icons survive loading, merge once and render alongside calendar prefixes', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  card.hass.callApi = async () => [{ summary: '🎾 <Lesson>', start: '2026-11-11T10:00:00', end: '2026-11-11T11:00:00' }];
+  await card.loadEvents(true);
+  assert.equal(card._events.length, 1);
+  assert.equal(card._events[0].eventIcons.length, 1);
+  assert.equal(card._events[0].summary, '<Lesson>');
+  for (const view of ['day', 'week', 'month']) {
+    card._setView(view);
+    card.render();
+    assert.equal(card.querySelectorAll('ha-icon[icon="mdi:tennis-ball"]').length, 1, view);
+    assert.ok(card.querySelector('ha-icon[icon="mdi:briefcase"]'), view);
+    assert.ok(card.innerHTML.includes('&lt;Lesson&gt;'), view);
+    assert.equal(card.querySelector('lesson'), null);
+  }
+  dom.window.close();
+});
+
+test('event icons are copied to every date and calendar in a series', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  const plan = await card._planEventSeries(seriesValues({ eventIcon: 'mdi:sail-boat', entities: ['calendar.work', 'calendar.family'] }));
+  assert.equal(plan.tasks.length, 8);
+  assert.ok(plan.tasks.every(task => task.data.summary === '⛵ Class'));
+  dom.window.close();
+});
+
+test('saved templates restore event icons and Unicode titles', () => {
+  const { card, window, dom } = setup();
+  card._openEventDialog();
+  let form = card.querySelector('form');
+  form.elements.summary.value = 'Tennis';
+  form.querySelector('[data-icon-choice="mdi:tennis-ball"]').click();
+  form.elements.templateName.value = 'Tennis class';
+  form.querySelector('[data-save-template]').click();
+  form.querySelector('[data-cancel]').click();
+  card._openEventDialog();
+  form = card.querySelector('form');
+  form.elements.template.value = 'saved:0';
+  form.elements.template.dispatchEvent(new window.Event('change'));
+  assert.equal(form.elements.eventIcon.value, 'mdi:tennis-ball');
+  assert.equal(form.elements.summary.value, '🎾 Tennis');
+  dom.window.close();
+});
+
+test('Home Assistant icon picker updates Unicode title when available', () => {
+  const { card, window, dom } = setup();
+  window.customElements.define('ha-icon-picker', class extends window.HTMLElement {});
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  const picker = card.querySelector('ha-icon-picker');
+  form.elements.summary.value = 'Vet';
+  assert.equal(card.querySelector('[data-icon-fallback]').hidden, true);
+  picker.dispatchEvent(new window.CustomEvent('value-changed', { detail: { value: 'mdi:cat' } }));
+  assert.equal(form.elements.summary.value, '🐱 Vet');
+  assert.equal(form.elements.eventIcon.value, 'mdi:cat');
+  assert.equal(picker.value, 'mdi:cat');
+  dom.window.close();
+});
