@@ -570,7 +570,7 @@ test('event creation stores Unicode in summary, preserves description and avoids
   assert.equal(card._eventServiceData({ ...values, summary: '🎾 🎵 Class' }).summary, '🎾 🎵 Class');
   assert.equal(card._eventServiceData({ ...values, eventIcon: '', summary: '🐱 Vet' }).summary, '🐱 Vet');
   assert.throws(() => card._eventServiceData({ ...values, eventIcon: 'mdi:tennis-ball" onclick="bad' }), /MDI/);
-  assert.throws(() => card._eventServiceData({ ...values, summary: '🎾 ' }), /Enter an event title/);
+  assert.equal(card._eventServiceData({ ...values, summary: '🎾 ' }).summary, '🎾');
   dom.window.close();
 });
 
@@ -990,13 +990,13 @@ test('displayed validation errors change language while preserving the entered t
   const { card, window, dom } = setup();
   card._openEventDialog();
   const form = card.querySelector('form');
-  form.elements.summary.value = '🎾 ';
+  form.elements.summary.value = '  ';
   form.dispatchEvent(new window.Event('submit', { cancelable: true }));
   await tick();
   assert.equal(card.querySelector('[data-error]').textContent, 'Enter an event title.');
   card.hass = { ...card.hass, locale: { language: 'fr' } };
   assert.equal(card.querySelector('[data-error]').textContent, 'Saisissez un titre pour l’événement.');
-  assert.equal(form.elements.summary.value, '🎾 ');
+  assert.equal(form.elements.summary.value, '  ');
   dom.window.close();
 });
 
@@ -1080,5 +1080,86 @@ test('creating multiple-calendar events by actual button clicks explains the pre
   form.querySelector('[type="submit"]').click();
   await tick();
   assert.equal(writes, 2);
+  dom.window.close();
+});
+
+test('moving the start keeps the previously selected event duration', () => {
+  const { card, window, dom } = setup();
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  const start = form.elements.start, end = form.elements.end;
+  start.value = '2026-11-11T16:00';
+  start.dispatchEvent(new window.Event('input', { bubbles: true }));
+  end.value = '2026-11-11T17:30';
+  end.dispatchEvent(new window.Event('input', { bubbles: true }));
+  start.value = '2026-11-14T16:00';
+  start.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(end.value, '2026-11-14T17:30');
+  start.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(end.value, '2026-11-14T17:30');
+  dom.window.close();
+});
+
+test('moving an all-day range preserves calendar-day duration across DST', () => {
+  const { card, dom } = setup();
+  assert.equal(card._moveEventEnd('2027-03-26', '2027-03-28', '2027-03-27', true), '2027-03-29');
+  assert.equal(card._moveEventEnd('2027-03-26T16:00', '2027-03-26T17:30', '2027-03-28T16:00', false), '2027-03-28T17:30');
+  assert.equal(card._moveEventEnd('2026-11-11T23:00', '2026-11-12T01:00', '2026-11-14T23:00', false), '2026-11-15T01:00');
+  dom.window.close();
+});
+
+test('emoji-only events can be created from a real Create click', async () => {
+  const { card, dom } = setup();
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  let saved;
+  card.hass.callService = async (_domain, _service, data) => { saved = data; };
+  card.loadEvents = async () => {};
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.querySelector('[data-icon-choice="mdi:tennis-ball"]').click();
+  assert.equal(form.elements.summary.value, '🎾');
+  form.querySelector('[type="submit"]').click();
+  await tick();
+  assert.equal(saved.summary, '🎾');
+  assert.equal(card.querySelector('dialog'), null);
+  dom.window.close();
+});
+
+test('emoji-only events with different icons stay separate while identical copies merge', () => {
+  const { card, dom } = setup();
+  const base = { start: new Date(2026, 10, 11, 10), end: new Date(2026, 10, 11, 11), summary: '' };
+  const events = card._mergeDuplicateEvents([{ ...base, eventIcon: 'mdi:tennis-ball' }, { ...base, eventIcon: 'mdi:music' }, { ...base, eventIcon: 'mdi:tennis-ball' }]);
+  assert.equal(events.length, 2);
+  card._events = events;
+  card.render();
+  assert.ok(card.querySelector('[data-event-index]').getAttribute('aria-label').includes('🎾'));
+  dom.window.close();
+});
+
+test('invalid end dates show an inline French explanation next to the field', () => {
+  const { card, dom } = setup();
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = '🎾';
+  form.elements.start.value = '2026-11-14T16:00';
+  form.elements.end.value = '2026-11-11T17:30';
+  form.querySelector('[data-plan]').click();
+  assert.equal(form.elements.end.getAttribute('aria-invalid'), 'true');
+  assert.match(form.elements.end.nextElementSibling.textContent, /La fin doit être postérieure au début/);
+  assert.equal(dom.window.document.activeElement, form.elements.end);
+  dom.window.close();
+});
+
+test('dialog columns keep event fields, planning and persistent actions in separate sections', () => {
+  const { card, dom } = setup();
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  assert.ok(form.elements.summary.closest('[data-event-fields]'));
+  assert.ok(form.elements.recurrence.closest('[data-planning-section]'));
+  assert.ok(form.querySelector('[name="destination"]').closest('.calendar-choice-list'));
+  assert.equal(form.querySelector('[data-dialog-body]').contains(form.querySelector('[type="submit"]')), false);
+  assert.ok(form.querySelector('[type="submit"]').closest('[data-dialog-actions]'));
+  assert.match(form.querySelector('[data-card-version]').textContent, /2026\.11\.11\.1/);
   dom.window.close();
 });

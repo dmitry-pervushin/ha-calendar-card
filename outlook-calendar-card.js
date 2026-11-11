@@ -108,7 +108,8 @@ const CARD_TRANSLATIONS = {
     "error_required_fields": "Fill in the required field.",
     "error_invalid_field": "Check the field value.",
     "preparing_events": "Preparing events…",
-    "preview_ready": "Check the preview, then click Create to confirm."
+    "preview_ready": "Check the preview, then click Create to confirm.",
+    "version": "Version"
   },
   "ru": {
     "add_event": "Добавить событие",
@@ -219,7 +220,8 @@ const CARD_TRANSLATIONS = {
     "error_required_fields": "Заполните обязательное поле.",
     "error_invalid_field": "Проверьте значение поля.",
     "preparing_events": "Подготовка событий…",
-    "preview_ready": "Проверьте предпросмотр и нажмите «Создать» для подтверждения."
+    "preview_ready": "Проверьте предпросмотр и нажмите «Создать» для подтверждения.",
+    "version": "Версия"
   },
   "fr": {
     "add_event": "Ajouter un événement",
@@ -330,9 +332,12 @@ const CARD_TRANSLATIONS = {
     "error_required_fields": "Renseignez le champ obligatoire.",
     "error_invalid_field": "Vérifiez la valeur du champ.",
     "preparing_events": "Préparation des événements…",
-    "preview_ready": "Vérifiez l’aperçu, puis cliquez sur Créer pour confirmer."
+    "preview_ready": "Vérifiez l’aperçu, puis cliquez sur Créer pour confirmer.",
+    "version": "Version"
   }
 };
+
+const CARD_VERSION = "2026.11.11.1";
 
 const EVENT_ICON_UNICODE = Object.freeze({
   "mdi:drama-masks": "🎭",
@@ -707,7 +712,7 @@ class OutlookCalendarCard extends HTMLElement {
   _eventSummaryWithIcon(summary, eventIcon) {
     const title = this._parseEventTitle(summary).summary.trim();
     if (!eventIcon) return title;
-    return `${EVENT_ICON_UNICODE[eventIcon] || `[${eventIcon}]`} ${title}`;
+    return `${EVENT_ICON_UNICODE[eventIcon] || `[${eventIcon}]`} ${title}`.trimEnd();
   }
 
   _renderEventSummary(event) {
@@ -725,7 +730,7 @@ class OutlookCalendarCard extends HTMLElement {
     for (const ev of events || []) {
       if (!ev || !ev.start || !ev.end) continue;
       // TEMPORARY: normalize summary for looser duplicate detection.
-      const summaryKey = this._normalizeSummary(ev.summary || "");
+      const summaryKey = this._normalizeSummary(ev.summary || "") || ev.eventIcon || (ev.summary || "").trim();
       const key = [
         ev.allDay ? "1" : "0",
         ev.start.getTime(),
@@ -1118,10 +1123,22 @@ class OutlookCalendarCard extends HTMLElement {
     });
   }
 
-  _localDateValue(date, allDay = false) {
+  _localDateValue(date, allDay = false, includeSeconds = false) {
     const pad = value => String(value).padStart(2, "0");
     const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    return allDay ? day : `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return allDay ? day : `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+      + (includeSeconds && date.getSeconds() ? `:${pad(date.getSeconds())}` : "");
+  }
+
+  _moveEventEnd(previousStart, previousEnd, nextStart, allDay) {
+    const parse = value => new Date(allDay ? `${value}T00:00:00` : value);
+    const before = parse(previousStart), after = parse(previousEnd), next = parse(nextStart);
+    if (![before, after, next].every(date => Number.isFinite(date.getTime())) || after <= before) return null;
+    // Preserve the local wall-clock duration across date and DST changes.
+    const wallTime = date => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds());
+    const shifted = new Date(wallTime(next) + wallTime(after) - wallTime(before));
+    const result = new Date(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), shifted.getUTCHours(), shifted.getUTCMinutes(), shifted.getUTCSeconds());
+    return this._localDateValue(result, allDay, true);
   }
 
   _eventServiceData(values, feature = 1) {
@@ -1131,7 +1148,7 @@ class OutlookCalendarCard extends HTMLElement {
         : this._text("error_create_unsupported"));
     }
     const title = this._parseEventTitle(values.summary);
-    if (!title.summary.trim()) {
+    if (!String(values.summary || "").trim()) {
       throw new Error(this._text("error_title_required"));
     }
     const eventIcon = (values.eventIcon || title.eventIcon || "").trim();
@@ -1308,7 +1325,7 @@ class OutlookCalendarCard extends HTMLElement {
   _eventInteractionAttrs(event) {
     this._renderedEvents ||= [];
     const index = this._renderedEvents.push(event) - 1;
-    const label = `${this._text("open_event")}: ${event.summary || ""}`;
+    const label = `${this._text("open_event")}: ${this._eventSummaryWithIcon(event.summary, event.eventIcon)}`;
     return `data-event-index="${index}" role="button" tabindex="0" aria-label="${this._escapeHtml(label)}"`;
   }
 
@@ -1357,7 +1374,9 @@ class OutlookCalendarCard extends HTMLElement {
     const escape = value => this._escapeHtml(value);
     const allCalendars = this._allCalendarEntities();
     const dialog = document.createElement("dialog");
-    dialog.style.cssText = "background:var(--card-background-color, white);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:12px;padding:24px;width:min(560px, calc(100vw - 64px));max-height:85vh;overflow:auto;";
+    dialog.className = "outlook-calendar-event-dialog";
+    dialog.dataset.editing = String(editing);
+    dialog.style.cssText = "background:var(--card-background-color, white);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:12px;padding:0;width:min(1080px, calc(100vw - 24px));max-height:92vh;overflow:hidden;box-sizing:border-box;";
     const start = this._getActiveDate();
     start.setHours(this._config.start_hour, 0, 0, 0);
     const end = new Date(start.getTime() + 3600000);
@@ -1370,7 +1389,19 @@ class OutlookCalendarCard extends HTMLElement {
       [1, text("weekday_mon")], [2, text("weekday_tue")], [3, text("weekday_wed")],
       [4, text("weekday_thu")], [5, text("weekday_fri")], [6, text("weekday_sat")], [0, text("weekday_sun")]
     ];
-    dialog.innerHTML = `<form novalidate style="display:grid;gap:14px;">
+    dialog.innerHTML = `<style>
+      .outlook-calendar-event-dialog [hidden] { display:none !important; }
+      .outlook-calendar-event-dialog .calendar-dialog-columns { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start; }
+      .outlook-calendar-event-dialog .calendar-dialog-section { display:grid;gap:14px;min-width:0;align-content:start; }
+      .outlook-calendar-event-dialog .calendar-dialog-dates { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:14px; }
+      .outlook-calendar-event-dialog .calendar-choice-list { max-height:180px;overflow:auto;overscroll-behavior:contain; }
+      .outlook-calendar-event-dialog[data-editing="true"] .calendar-dialog-columns { grid-template-columns:minmax(0,1fr); }
+      .outlook-calendar-event-dialog[data-editing="true"] { width:min(780px,calc(100vw - 24px)) !important; }
+      @media (max-width:640px) {
+        .outlook-calendar-event-dialog .calendar-dialog-columns { grid-template-columns:minmax(0,1fr); }
+      }
+    </style><form novalidate style="display:flex;flex-direction:column;max-height:calc(92vh - 2px);">
+      <div data-dialog-body style="display:grid;gap:14px;min-height:0;overflow:auto;padding:20px;">
       <h2 style="margin:0;font-size:20px;">${editing ? text("edit_event") : text("add_event")}</h2>
       ${editing ? field(text("event_calendar"), `<select name="editSource">${sources.map((source, index) => `<option value="${index}" ${source === editSource ? "selected" : ""}>${escape(this._calendarName(source.entity))}</option>`).join("")}</select>`) + `<small>${text("edit_scope_hint")}</small><div data-edit-status role="status"></div>` : ""}
       <div data-create-only>${field(text("template"), `<select name="template"><option value="">${text("custom_settings")}</option><option value="school">${text("school_activity")}</option></select>`)}</div>
@@ -1381,7 +1412,8 @@ class OutlookCalendarCard extends HTMLElement {
           <button type="button" data-delete-template disabled>${text("delete")}</button>
         </div><small>${text("template_storage_hint")}</small>
       </details>
-      <fieldset data-create-only><legend>${text("add_to_calendars")}</legend>${checkboxes(calendars.map(calendar => calendar.entity), "destination", true)}</fieldset>
+      <div class="calendar-dialog-columns">
+      <section class="calendar-dialog-section" data-event-fields>
       ${field(text("title"), '<input name="summary" required maxlength="255" autofocus>')}
       <div>
         <div data-icon-fallback>${field(text("event_icon"), '<input name="eventIcon" placeholder="mdi:tennis-ball" maxlength="120" autocomplete="off">')}</div>
@@ -1404,9 +1436,16 @@ class OutlookCalendarCard extends HTMLElement {
         <small>${text("icon_unicode_hint")}</small>
       </div>
       <label><input name="allDay" type="checkbox"> ${text("all_day")}</label>
+      <div class="calendar-dialog-dates">
       ${field(text("start"), `<input name="start" type="datetime-local" value="${this._localDateValue(start)}" required>`)}
       ${field(text("end"), `<input name="end" type="datetime-local" value="${this._localDateValue(end)}" required>`)}
+      </div>
       <small data-end-hint hidden>${text("all_day_end_hint")}</small>
+      ${field(text("location"), '<input name="location">')}
+      ${field(text("description"), '<textarea name="description" rows="3"></textarea>')}
+      </section>
+      <section class="calendar-dialog-section" data-planning-section>
+      <fieldset data-create-only><legend>${text("add_to_calendars")}</legend><div class="calendar-choice-list">${checkboxes(calendars.map(calendar => calendar.entity), "destination", true)}</div></fieldset>
       <div data-create-only>${field(text("repeat"), `<select name="recurrence"><option value="none">${text("repeat_none")}</option><option value="weekly">${text("repeat_weekly")}</option><option value="daily">${text("repeat_daily")}</option></select>`)}</div>
       <div data-repeat-settings hidden>
         ${field('<span data-interval-label></span>', '<input name="interval" type="number" min="1" max="52" value="1" required>')}
@@ -1419,15 +1458,17 @@ class OutlookCalendarCard extends HTMLElement {
         </div>
       </div>
       <details data-exclusions data-create-only><summary>${text("skip_days")}</summary>
-        <fieldset><legend>${text("skip_days_hint")}</legend>${checkboxes(allCalendars, "exclusion")}</fieldset>
+        <fieldset><legend>${text("skip_days_hint")}</legend><div class="calendar-choice-list">${checkboxes(allCalendars, "exclusion")}</div></fieldset>
       </details>
-      ${field(text("location"), '<input name="location">')}
-      ${field(text("description"), '<textarea name="description" rows="3"></textarea>')}
       <small data-create-only>${text("series_conditions_hint")}</small>
+      </section>
+      </div>
       <div data-preview hidden aria-live="polite" style="border:1px solid var(--divider-color);border-radius:6px;padding:12px;"></div>
       <div role="status" data-progress aria-live="polite"></div>
       <div role="alert" data-error style="color:var(--error-color);" hidden></div>
-      <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px;">
+      </div>
+      <div data-dialog-actions style="display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:12px;flex-shrink:0;padding:12px 20px;border-top:1px solid var(--divider-color);background:var(--card-background-color, white);">
+        <small data-card-version style="margin-right:auto;color:var(--secondary-text-color);">${text("version")}: ${CARD_VERSION}</small>
         <button type="button" data-cancel>${text("cancel")}</button>
         <button type="button" data-plan>${text("preview")}</button>
         <button type="submit">${text("create")}</button>
@@ -1448,6 +1489,23 @@ class OutlookCalendarCard extends HTMLElement {
     const preview = dialog.querySelector("[data-preview]");
     const error = dialog.querySelector("[data-error]");
     const progress = dialog.querySelector("[data-progress]");
+    let previousRange = { start: controls.start.value, end: controls.end.value };
+    const rememberRange = () => {
+      const parse = value => new Date(controls.allDay.checked ? `${value}T00:00:00` : value);
+      const start = parse(controls.start.value), end = parse(controls.end.value);
+      if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && end > start) {
+        previousRange = { start: controls.start.value, end: controls.end.value };
+      }
+    };
+    const moveStart = () => {
+      if (controls.start.value === previousRange.start) return;
+      const end = this._moveEventEnd(previousRange.start, previousRange.end, controls.start.value, controls.allDay.checked);
+      if (end) { controls.end.value = end; rememberRange(); }
+    };
+    const clearFieldErrors = () => {
+      form.querySelectorAll("[data-field-error]").forEach(note => note.remove());
+      form.querySelectorAll('[aria-invalid="true"]').forEach(control => control.removeAttribute("aria-invalid"));
+    };
     let plan = null;
     const completed = new Set();
     let busy = false;
@@ -1514,6 +1572,7 @@ class OutlookCalendarCard extends HTMLElement {
       });
       dialog.querySelector("[data-delete-template]").disabled = editing || busy || completed.size > 0 || !controls.template.value.startsWith("saved:");
       if (editing) {
+        dialog.querySelector("[data-planning-section]").hidden = true;
         dialog.querySelectorAll("[data-create-only]").forEach(element => {
           element.hidden = true;
           element.querySelectorAll("input,select,textarea,button").forEach(control => { control.disabled = true; });
@@ -1538,7 +1597,10 @@ class OutlookCalendarCard extends HTMLElement {
       submit.disabled = editing && !!this._eventEditUnavailableReason(editSource);
     };
     form.addEventListener("input", event => {
-      event.target.removeAttribute("aria-invalid");
+      clearFieldErrors();
+      error.hidden = true;
+      if (event.target.name === "start") moveStart();
+      if (event.target.name === "end") rememberRange();
       if (["templateName", "template"].includes(event.target.name)) return;
       if (event.target.name === "summary") {
         controls.eventIcon.value = this._parseEventTitle(controls.summary.value).eventIcon;
@@ -1552,6 +1614,8 @@ class OutlookCalendarCard extends HTMLElement {
       updateVisibility();
     });
     form.addEventListener("change", event => {
+      if (event.target.name === "start") moveStart();
+      if (event.target.name === "end") rememberRange();
       if (["templateName", "template"].includes(event.target.name)) return;
       invalidate();
       updateVisibility();
@@ -1597,6 +1661,7 @@ class OutlookCalendarCard extends HTMLElement {
         nextDay.setDate(nextDay.getDate() + 1);
         controls.end.value = this._localDateValue(nextDay, true);
       }
+      rememberRange();
       invalidate();
       updateVisibility();
     };
@@ -1617,7 +1682,17 @@ class OutlookCalendarCard extends HTMLElement {
     };
     const validate = () => {
       updateVisibility();
-      const invalid = Array.from(controls).find(control => control.willValidate && !control.validity.valid);
+      clearFieldErrors();
+      let invalid = Array.from(controls).find(control => control.willValidate && !control.validity.valid);
+      let semanticError = "";
+      if (!invalid && !controls.summary.value.trim()) {
+        invalid = controls.summary;
+        semanticError = text("error_title_required");
+      }
+      if (!invalid && new Date(controls.end.value) <= new Date(controls.start.value)) {
+        invalid = controls.end;
+        semanticError = text("error_end_before_start");
+      }
       if (!invalid) return true;
       const labels = {
         summary: text("title"), start: text("start"), end: text("end"),
@@ -1625,12 +1700,17 @@ class OutlookCalendarCard extends HTMLElement {
         interval: controls.recurrence.value === "weekly" ? text("repeat_interval_weeks") : text("repeat_interval_days"),
         eventIcon: text("event_icon"), templateName: text("template_name")
       };
-      const message = invalid.name === "interval" && !invalid.validity.valueMissing
+      const message = semanticError || (invalid.name === "interval" && !invalid.validity.valueMissing
         ? text("error_repeat_interval")
-        : text(invalid.validity.valueMissing ? "error_required_fields" : "error_invalid_field");
-      error.textContent = `${message}${labels[invalid.name] ? ` ${labels[invalid.name]}` : ""}`;
+        : text(invalid.validity.valueMissing ? "error_required_fields" : "error_invalid_field"));
+      error.textContent = semanticError || `${message}${labels[invalid.name] ? ` ${labels[invalid.name]}` : ""}`;
       error.hidden = false;
       invalid.setAttribute("aria-invalid", "true");
+      const note = document.createElement("small");
+      note.dataset.fieldError = "true";
+      note.style.cssText = "display:block;color:var(--error-color);";
+      note.textContent = error.textContent;
+      invalid.insertAdjacentElement("afterend", note);
       for (let ancestor = invalid.parentElement; ancestor && ancestor !== dialog; ancestor = ancestor.parentElement) {
         if (ancestor.tagName === "DETAILS") ancestor.open = true;
       }
@@ -1754,6 +1834,7 @@ class OutlookCalendarCard extends HTMLElement {
         controls.until.value = this._localDateValue(until, true);
       }
       dialog.querySelector("[data-exclusions]").open = selected("exclusion").length > 0;
+      rememberRange();
       invalidate();
       updateVisibility();
     };
@@ -1807,12 +1888,12 @@ class OutlookCalendarCard extends HTMLElement {
       for (const name of ["start", "end"]) {
         controls[name].type = editSource.allDay ? "date" : "datetime-local";
         controls[name].step = "1";
-        const seconds = editSource[name].getSeconds();
-        controls[name].value = this._localDateValue(editSource[name], editSource.allDay)
-          + (!editSource.allDay && seconds ? `:${String(seconds).padStart(2, "0")}` : "");
+        controls[name].value = this._localDateValue(editSource[name], editSource.allDay, true);
       }
       controls.description.value = editSource.description || "";
       controls.location.value = editSource.location || "";
+      rememberRange();
+      clearFieldErrors();
       error.hidden = true;
       invalidate();
       updateVisibility();
@@ -1831,6 +1912,8 @@ class OutlookCalendarCard extends HTMLElement {
           error.textContent = error.textContent.slice(0, -previous.retry_hint.length) + text("retry_hint");
         }
       }
+      const fieldError = form.querySelector("[data-field-error]");
+      if (fieldError && !error.hidden) fieldError.textContent = error.textContent;
       for (const key of ["template_saved", "preparing_events", "preview_ready"]) {
         if (progress.textContent === previous[key]) { progress.textContent = text(key); break; }
       }
