@@ -1,0 +1,11 @@
+{
+  "name": "ha-calendar-card",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check outlook-calendar-card.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

@@ -82,7 +82,7 @@ class OutlookCalendarCard extends HTMLElement {
   }
 
   _localizeFirst(keys, fallback) {
-    const hass = window.hass || this._hass;
+    const hass = this._hass || window.hass;
     if (hass && typeof hass.localize === "function") {
       for (const key of keys) {
         const value = hass.localize(key);
@@ -249,7 +249,14 @@ class OutlookCalendarCard extends HTMLElement {
       calendars: (this._calendars || []).map(cal => ({
         entity: cal.entity,
         color: cal.color,
-        prefix: cal.prefix
+        prefix: cal.prefix,
+        colorAttribute: (this._hass || window.hass)?.states?.[cal.entity]?.attributes?.color,
+        initialColor: (this._hass || window.hass)?.states?.[cal.entity]?.attributes?.initial_color,
+        icon: (this._hass || window.hass)?.states?.[cal.entity]?.attributes?.icon,
+        supportedFeatures: (this._hass || window.hass)?.states?.[cal.entity]?.attributes?.supported_features,
+        state: (this._hass || window.hass)?.states?.[cal.entity]?.state,
+        registryColor: (this._hass || window.hass)?.entities?.[cal.entity]?.color,
+        registryIcon: (this._hass || window.hass)?.entities?.[cal.entity]?.icon
       }))
     });
   }
@@ -257,7 +264,7 @@ class OutlookCalendarCard extends HTMLElement {
   async _getCalendarColor(calendar) {
     if (!this._config) return "var(--primary-color)";
     if (calendar && calendar.color) return calendar.color;
-    const hass = window.hass || this._hass;
+    const hass = this._hass || window.hass;
     const entityId = calendar && calendar.entity;
     const state = hass && hass.states && entityId ? hass.states[entityId] : null;
     const attrs = state && state.attributes;
@@ -306,7 +313,7 @@ class OutlookCalendarCard extends HTMLElement {
             return {
               entity: entry.entity,
               color: entry.color || null,
-              prefix: typeof entry.prefix === "string" ? entry.prefix : ""
+              prefix: typeof entry.prefix === "string" ? entry.prefix : null
             };
           }
         }
@@ -317,10 +324,22 @@ class OutlookCalendarCard extends HTMLElement {
     return [];
   }
 
-  _formatEventTitle(event, calendar) {
-    const prefix = calendar && typeof calendar.prefix === "string" ? calendar.prefix : "";
-    const summary = event && event.summary ? event.summary : "";
-    return `${prefix}${summary}`;
+  _getCalendarIcon(calendar) {
+    if (typeof calendar.prefix === "string") return "";
+    const hass = this._hass || window.hass;
+    return hass?.states?.[calendar.entity]?.attributes?.icon
+      || hass?.entities?.[calendar.entity]?.icon || "mdi:calendar";
+  }
+
+  _renderEventPrefix(event) {
+    const prefixes = event.prefixes || (event.prefix ? [event.prefix] : []);
+    const icons = event.icons || (event.icon ? [event.icon] : []);
+    return prefixes.map(prefix => this._escapeHtml(prefix)).join("")
+      + icons.map(icon => `<ha-icon icon="${this._escapeHtml(icon)}" style="--mdc-icon-size:14px;vertical-align:middle;"></ha-icon> `).join("");
+  }
+
+  _renderEventTitle(event) {
+    return this._renderEventPrefix(event) + this._escapeHtml(event.summary || "");
   }
 
   _mergeDuplicateEvents(events) {
@@ -340,6 +359,7 @@ class OutlookCalendarCard extends HTMLElement {
         merged.set(key, {
           ...ev,
           prefixes: ev.prefix ? [ev.prefix] : [],
+          icons: ev.icon ? [ev.icon] : [],
           colors: ev.color ? [ev.color] : [],
           calendarIndex: ev.calendarIndex ?? 0
         });
@@ -347,6 +367,9 @@ class OutlookCalendarCard extends HTMLElement {
       }
       if (ev.prefix && !existing.prefixes.includes(ev.prefix)) {
         existing.prefixes.push(ev.prefix);
+      }
+      if (ev.icon && !existing.icons.includes(ev.icon)) {
+        existing.icons.push(ev.icon);
       }
       if (ev.color && !existing.colors.includes(ev.color)) {
         existing.colors.push(ev.color);
@@ -426,7 +449,7 @@ class OutlookCalendarCard extends HTMLElement {
 
      const events = [];
 
-     const hass = window.hass || this._hass;
+     const hass = this._hass || window.hass;
      if (!hass) return;
 
      const baseDate = this._getActiveDate();
@@ -491,7 +514,7 @@ class OutlookCalendarCard extends HTMLElement {
                 continue;
               }
               events.push({
-                title: this._formatEventTitle(e, calendar),
+                icon: this._getCalendarIcon(calendar),
                 summary: e && e.summary ? e.summary : "",
                 prefix: calendar && typeof calendar.prefix === "string" ? calendar.prefix : "",
                 start: st,
@@ -514,13 +537,17 @@ class OutlookCalendarCard extends HTMLElement {
        this._lastLoadAt = Date.now();
        this._loadInFlight = false;
        this.render();
+       if (this._reloadAfterLoad) {
+         this._reloadAfterLoad = false;
+         this._scheduleLoad(true);
+       }
      }
   }
 
   render() {
 
     if (!this._config) return;
-    const hass = window.hass || this._hass;
+    const hass = this._hass || window.hass;
     if (!hass) return;
 
     const start = this._config.start_hour;
@@ -546,6 +573,8 @@ class OutlookCalendarCard extends HTMLElement {
     o += `<button type="button" data-view="week" aria-label="${this._escapeHtml(labelWeek)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelWeek)}</button>`;
     o += `<button type="button" data-view="month" aria-label="${this._escapeHtml(labelMonth)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelMonth)}</button>`;
     o += `</div>`;
+    const addLabel = this._text("Add event", "Добавить событие");
+    o += `<button type="button" data-action="add" aria-label="${addLabel}" title="${addLabel}" ${this._writableCalendars().length ? "" : "disabled"} style="background:var(--primary-color);color:var(--text-primary-color, white);border:0;border-radius:6px;padding:4px 8px;cursor:pointer;">+</button>`;
     o += `</div>`;
     const view = this._getView();
     if (view === "day") {
@@ -566,7 +595,13 @@ class OutlookCalendarCard extends HTMLElement {
     }
     o += '</ha-card>';
 
-    this.innerHTML = o;
+    if (!this._cardContainer) {
+      this._cardContainer = document.createElement("div");
+      this.appendChild(this._cardContainer);
+    }
+    this._cardContainer.innerHTML = o;
+    const add = this.querySelector('[data-action="add"]');
+    if (add) add.onclick = () => this._openEventDialog();
     const prev = this.querySelector('[data-action="prev"]');
     if (prev) {
       prev.onclick = () => this._shiftRange(-1);
@@ -589,6 +624,140 @@ class OutlookCalendarCard extends HTMLElement {
     });
   }
 
+  _text(english, russian) {
+    const hass = this._hass || window.hass;
+    return (hass?.locale?.language || hass?.language || "").startsWith("ru") ? russian : english;
+  }
+
+  _writableCalendars() {
+    const hass = this._hass || window.hass;
+    return (this._calendars || []).filter(calendar => {
+      const state = hass?.states?.[calendar.entity];
+      return state && !["unavailable", "unknown"].includes(state.state)
+        && (Number(state.attributes?.supported_features) & 1) !== 0;
+    });
+  }
+
+  _localDateValue(date, allDay = false) {
+    const pad = value => String(value).padStart(2, "0");
+    const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    return allDay ? day : `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  _eventServiceData(values) {
+    if (!this._writableCalendars().some(calendar => calendar.entity === values.entity)) {
+      throw new Error(this._text("This calendar does not support adding events.", "Этот календарь не поддерживает добавление событий."));
+    }
+    if (!values.summary.trim()) {
+      throw new Error(this._text("Enter an event title.", "Введите название события."));
+    }
+    const start = new Date(values.start);
+    const end = new Date(values.end);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      throw new Error(this._text("End must be after start.", "Окончание должно быть позже начала."));
+    }
+    return {
+      entity_id: values.entity,
+      summary: values.summary.trim(),
+      description: values.description.trim(),
+      location: values.location.trim(),
+      ...(values.allDay
+        ? { start_date: values.start, end_date: values.end }
+        : { start_date_time: start.toISOString(), end_date_time: end.toISOString() })
+    };
+  }
+
+  _openEventDialog() {
+    if (this.querySelector("dialog")) return;
+    const calendars = this._writableCalendars();
+    if (!calendars.length) return;
+    const hass = this._hass || window.hass;
+    const text = (english, russian) => this._text(english, russian);
+    const dialog = document.createElement("dialog");
+    dialog.style.cssText = "background:var(--card-background-color, white);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:12px;padding:24px;width:min(420px, calc(100vw - 64px));max-height:80vh;overflow:auto;";
+    const start = this._getActiveDate();
+    start.setHours(this._config.start_hour, 0, 0, 0);
+    const end = new Date(start.getTime() + 3600000);
+    const field = (label, input) => `<label style="display:grid;gap:4px;">${label}${input}</label>`;
+    dialog.innerHTML = `<form style="display:grid;gap:14px;">
+      <h2 style="margin:0;font-size:20px;">${text("Add event", "Добавить событие")}</h2>
+      ${field(text("Calendar", "Календарь"), `<select name="entity" required>${calendars.map(calendar => `<option value="${this._escapeHtml(calendar.entity)}">${this._escapeHtml(hass.states[calendar.entity]?.attributes?.friendly_name || calendar.entity)}</option>`).join("")}</select>`)}
+      ${field(text("Title", "Название"), '<input name="summary" required maxlength="255" autofocus>')}
+      <label><input name="allDay" type="checkbox"> ${text("All day", "Весь день")}</label>
+      ${field(text("Start", "Начало"), `<input name="start" type="datetime-local" value="${this._localDateValue(start)}" required>`)}
+      ${field(text("End", "Окончание"), `<input name="end" type="datetime-local" value="${this._localDateValue(end)}" required>`)}
+      <small data-end-hint hidden>${text("For all-day events, end is the day after the last event day.", "Для событий на весь день окончание — день после последнего дня события.")}</small>
+      ${field(text("Location", "Место"), '<input name="location">')}
+      ${field(text("Description", "Описание"), '<textarea name="description" rows="3"></textarea>')}
+      <div role="alert" data-error style="color:var(--error-color);" hidden></div>
+      <div style="display:flex;justify-content:flex-end;gap:12px;">
+        <button type="button" data-cancel>${text("Cancel", "Отмена")}</button>
+        <button type="submit">${text("Create", "Создать")}</button>
+      </div>
+    </form>`;
+    dialog.querySelectorAll("input:not([type=checkbox]), select, textarea, button").forEach(control => {
+      control.style.cssText = "font:inherit;color:inherit;background:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:6px;padding:8px;min-width:0;";
+    });
+    const form = dialog.querySelector("form");
+    const controls = form.elements;
+    const close = () => {
+      dialog.close();
+      dialog.remove();
+      this.querySelector('[data-action="add"]')?.focus();
+    };
+    dialog.querySelector("[data-cancel]").onclick = close;
+    dialog.addEventListener("cancel", event => {
+      event.preventDefault();
+      if (!dialog.dataset.saving) close();
+    });
+    controls.allDay.onchange = () => {
+      const allDay = controls.allDay.checked;
+      for (const name of ["start", "end"]) {
+        const value = controls[name].value;
+        controls[name].type = allDay ? "date" : "datetime-local";
+        controls[name].value = allDay ? value.slice(0, 10) : `${value}T${name === "start" ? "09:00" : "10:00"}`;
+      }
+      if (allDay && controls.end.value <= controls.start.value) {
+        const nextDay = new Date(`${controls.start.value}T12:00:00`);
+        nextDay.setDate(nextDay.getDate() + 1);
+        controls.end.value = this._localDateValue(nextDay, true);
+      }
+      dialog.querySelector("[data-end-hint]").hidden = !allDay;
+    };
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if (dialog.dataset.saving || !form.reportValidity()) return;
+      const error = dialog.querySelector("[data-error]");
+      error.hidden = true;
+      try {
+        const data = this._eventServiceData({
+          entity: controls.entity.value, summary: controls.summary.value,
+          start: controls.start.value, end: controls.end.value,
+          allDay: controls.allDay.checked,
+          location: controls.location.value, description: controls.description.value
+        });
+        dialog.dataset.saving = "true";
+        Array.from(controls).forEach(control => { control.disabled = true; });
+        await (this._hass || window.hass).callService("calendar", "create_event", data);
+      } catch (err) {
+        error.textContent = err?.message || String(err);
+        error.hidden = false;
+        delete dialog.dataset.saving;
+        Array.from(controls).forEach(control => { control.disabled = false; });
+        return;
+      }
+      close();
+      // If an earlier fetch is still in progress, queue a fresh fetch after it.
+      this._reloadAfterLoad = true;
+      if (!this._loadInFlight) {
+        this._reloadAfterLoad = false;
+        this.loadEvents(true);
+      }
+    };
+    this.appendChild(dialog);
+    dialog.showModal();
+  }
+
   _eventOverlapsDay(ev, dayStart, dayEnd) {
     if (ev.allDay) {
       const startDay = new Date(ev.start);
@@ -601,13 +770,6 @@ class OutlookCalendarCard extends HTMLElement {
       }
     }
     return ev.start < dayEnd && ev.end > dayStart;
-  }
-
-  _eventPrefixText(ev) {
-    if (Array.isArray(ev.prefixes) && ev.prefixes.length > 0) {
-      return ev.prefixes.join("");
-    }
-    return ev.prefix || "";
   }
 
   renderWeekView(events) {
@@ -630,14 +792,13 @@ class OutlookCalendarCard extends HTMLElement {
       const items = dayEvents.map(ev => {
         if (ev.allDay) {
           const bg = this._eventBackground(ev);
-          return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">${this._escapeHtml(ev.title)}</div>`;
+          return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">${this._renderEventTitle(ev)}</div>`;
         }
         const bg = this._eventBackground(ev);
         const timeLabel = this._formatTimeLabel(ev.start);
-        const prefixText = this._eventPrefixText(ev);
-        const badgeText = `${timeLabel} ${prefixText}`.trim();
+        const badgeText = `${this._escapeHtml(timeLabel)} ${this._renderEventPrefix(ev)}`;
         return `<div style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">
-          <span style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:4px;padding:1px 4px;margin-right:4px;display:inline-block;">${this._escapeHtml(badgeText)}</span>
+          <span style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:4px;padding:1px 4px;margin-right:4px;display:inline-block;">${badgeText}</span>
           ${this._escapeHtml(ev.summary || ev.title)}
         </div>`;
       }).join("");
@@ -677,14 +838,13 @@ class OutlookCalendarCard extends HTMLElement {
         const items = dayEvents.map(ev => {
           if (ev.allDay) {
             const bg = this._eventBackground(ev);
-            return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">${this._escapeHtml(ev.title)}</div>`;
+            return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">${this._renderEventTitle(ev)}</div>`;
           }
           const bg = this._eventBackground(ev);
           const timeLabel = this._formatTimeLabel(ev.start);
-          const prefixText = this._eventPrefixText(ev);
-          const badgeText = `${timeLabel} ${prefixText}`.trim();
+          const badgeText = `${this._escapeHtml(timeLabel)} ${this._renderEventPrefix(ev)}`;
           return `<div style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">
-            <span style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:4px;padding:0 3px;margin-right:3px;display:inline-block;">${this._escapeHtml(badgeText)}</span>
+            <span style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:4px;padding:0 3px;margin-right:3px;display:inline-block;">${badgeText}</span>
             ${this._escapeHtml(ev.summary || ev.title)}
           </div>`;
         }).join("");
@@ -753,7 +913,7 @@ class OutlookCalendarCard extends HTMLElement {
       const width = 100 / ev._columns;
       const left = width * ev._column;
       const bg = this._eventBackground(ev);
-      return `<div style="position:absolute;left:${left}%;width:${width}%;top:${top}%;height:${height}%;background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px;font-size:12px;box-sizing:border-box;overflow:hidden;">${this._escapeHtml(ev.title)}</div>`;
+      return `<div style="position:absolute;left:${left}%;width:${width}%;top:${top}%;height:${height}%;background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px;font-size:12px;box-sizing:border-box;overflow:hidden;">${this._renderEventTitle(ev)}</div>`;
     }).join('');
     return o;
   }
@@ -765,7 +925,7 @@ class OutlookCalendarCard extends HTMLElement {
     }
     const items = allDay.map(ev => {
       const bg = this._eventBackground(ev);
-      return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._escapeHtml(ev.title)}</div>`;
+      return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._renderEventTitle(ev)}</div>`;
     }).join('');
     return `<div style="padding:6px;border-bottom:1px solid var(--divider-color);display:flex;flex-wrap:wrap;gap:6px;">${items}</div>`;
   }
