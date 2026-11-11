@@ -342,11 +342,19 @@ class OutlookCalendarCard extends HTMLElement {
       || hass?.entities?.[calendar.entity]?.icon || "mdi:calendar";
   }
 
+  _joinEventPrefixes(prefixes) {
+    if (prefixes.length <= 1) return prefixes.join("");
+    const combined = prefixes.map(prefix => prefix.trim()).join("");
+    return combined ? `${combined} ` : "";
+  }
+
   _renderEventPrefix(event) {
     const prefixes = event.prefixes || (event.prefix ? [event.prefix] : []);
     const icons = event.icons || (event.icon ? [event.icon] : []);
-    return prefixes.map(prefix => this._escapeHtml(prefix)).join("")
-      + icons.map(icon => `<ha-icon icon="${this._escapeHtml(icon)}" style="--mdc-icon-size:14px;vertical-align:middle;"></ha-icon> `).join("");
+    return this._joinEventPrefixes([
+      ...prefixes.map(prefix => this._escapeHtml(prefix)),
+      ...icons.map(icon => `<ha-icon icon="${this._escapeHtml(icon)}" style="--mdc-icon-size:14px;vertical-align:middle;"></ha-icon> `)
+    ]);
   }
 
   _renderEventTitle(event) {
@@ -393,7 +401,7 @@ class OutlookCalendarCard extends HTMLElement {
 
     const out = [];
     for (const ev of merged.values()) {
-      const prefixText = ev.prefixes.length > 0 ? ev.prefixes.join("") : "";
+      const prefixText = this._joinEventPrefixes(ev.prefixes);
       out.push({
         ...ev,
         title: `${prefixText}${ev.summary || ""}`,
