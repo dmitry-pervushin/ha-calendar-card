@@ -999,3 +999,86 @@ test('displayed validation errors change language while preserving the entered t
   assert.equal(form.elements.summary.value, '🎾 ');
   dom.window.close();
 });
+
+test('a real Create click ignores invalid repeat fields after repeating is switched off', async () => {
+  const { card, window, dom } = setup();
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  let writes = 0;
+  card.hass.callService = async () => { writes++; };
+  card.loadEvents = async () => {};
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Test';
+  form.elements.recurrence.value = 'weekly';
+  form.elements.recurrence.dispatchEvent(new window.Event('change', { bubbles: true }));
+  form.elements.interval.value = '0';
+  form.elements.recurrence.value = 'none';
+  form.elements.recurrence.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(form.elements.interval.disabled, true);
+  assert.equal(form.elements.until.disabled, true);
+  assert.equal(form.elements.holidayCalendar.disabled, true);
+  form.querySelector('[type="submit"]').click();
+  await tick();
+  assert.equal(writes, 1);
+  assert.equal(card.querySelector('dialog'), null);
+  dom.window.close();
+});
+
+test('a real Create click with a missing required field shows a localized error', async () => {
+  const { card, dom } = setup();
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.querySelector('[type="submit"]').click();
+  assert.equal(card.querySelector('[data-error]').hidden, false);
+  assert.match(card.querySelector('[data-error]').textContent, /Renseignez le champ obligatoire/);
+  assert.match(card.querySelector('[data-error]').textContent, /Titre/);
+  assert.equal(form.elements.summary.getAttribute('aria-invalid'), 'true');
+  assert.equal(dom.window.document.activeElement, form.elements.summary);
+  dom.window.close();
+});
+
+test('active repeat validation is visible and prevents writes instead of silently blocking Create', () => {
+  const { card, window, dom } = setup();
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  let writes = 0;
+  card.hass.callService = async () => { writes++; };
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Lesson';
+  form.elements.recurrence.value = 'weekly';
+  form.elements.recurrence.dispatchEvent(new window.Event('change', { bubbles: true }));
+  form.elements.interval.value = '0';
+  form.querySelector('[type="submit"]').click();
+  assert.match(card.querySelector('[data-error]').textContent, /L’intervalle de répétition doit/);
+  assert.equal(writes, 0);
+  form.elements.interval.value = '1';
+  form.elements.until.value = '';
+  form.querySelector('[type="submit"]').click();
+  assert.match(card.querySelector('[data-error]').textContent, /Répéter jusqu’au/);
+  assert.equal(dom.window.document.activeElement, form.elements.until);
+  assert.equal(writes, 0);
+  dom.window.close();
+});
+
+test('creating multiple-calendar events by actual button clicks explains the preview step', async () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  let writes = 0;
+  card.hass.callService = async () => { writes++; };
+  card.loadEvents = async () => {};
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Lesson';
+  form.querySelector('[name="destination"][value="calendar.family"]').click();
+  form.querySelector('[type="submit"]').click();
+  await tick();
+  assert.equal(writes, 0);
+  assert.equal(card.querySelector('[data-preview]').hidden, false);
+  assert.match(card.querySelector('[data-progress]').textContent, /Vérifiez l’aperçu/);
+  form.querySelector('[type="submit"]').click();
+  await tick();
+  assert.equal(writes, 2);
+  dom.window.close();
+});

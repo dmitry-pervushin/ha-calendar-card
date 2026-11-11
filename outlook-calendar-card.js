@@ -104,7 +104,11 @@ const CARD_TRANSLATIONS = {
     "error_load_events": "Failed to load calendar events",
     "no_events": "No events",
     "card_name": "Outlook style calendar",
-    "card_description": "Time grid calendar with events like Outlook"
+    "card_description": "Time grid calendar with events like Outlook",
+    "error_required_fields": "Fill in the required field.",
+    "error_invalid_field": "Check the field value.",
+    "preparing_events": "Preparing events…",
+    "preview_ready": "Check the preview, then click Create to confirm."
   },
   "ru": {
     "add_event": "Добавить событие",
@@ -211,7 +215,11 @@ const CARD_TRANSLATIONS = {
     "error_load_events": "Не удалось загрузить события календаря",
     "no_events": "Нет событий",
     "card_name": "Календарь в стиле Outlook",
-    "card_description": "Календарь с временной сеткой в стиле Outlook"
+    "card_description": "Календарь с временной сеткой в стиле Outlook",
+    "error_required_fields": "Заполните обязательное поле.",
+    "error_invalid_field": "Проверьте значение поля.",
+    "preparing_events": "Подготовка событий…",
+    "preview_ready": "Проверьте предпросмотр и нажмите «Создать» для подтверждения."
   },
   "fr": {
     "add_event": "Ajouter un événement",
@@ -318,7 +326,11 @@ const CARD_TRANSLATIONS = {
     "error_load_events": "Impossible de charger les événements du calendrier",
     "no_events": "Aucun événement",
     "card_name": "Calendrier de style Outlook",
-    "card_description": "Calendrier avec grille horaire de style Outlook"
+    "card_description": "Calendrier avec grille horaire de style Outlook",
+    "error_required_fields": "Renseignez le champ obligatoire.",
+    "error_invalid_field": "Vérifiez la valeur du champ.",
+    "preparing_events": "Préparation des événements…",
+    "preview_ready": "Vérifiez l’aperçu, puis cliquez sur Créer pour confirmer."
   }
 };
 
@@ -1358,7 +1370,7 @@ class OutlookCalendarCard extends HTMLElement {
       [1, text("weekday_mon")], [2, text("weekday_tue")], [3, text("weekday_wed")],
       [4, text("weekday_thu")], [5, text("weekday_fri")], [6, text("weekday_sat")], [0, text("weekday_sun")]
     ];
-    dialog.innerHTML = `<form style="display:grid;gap:14px;">
+    dialog.innerHTML = `<form novalidate style="display:grid;gap:14px;">
       <h2 style="margin:0;font-size:20px;">${editing ? text("edit_event") : text("add_event")}</h2>
       ${editing ? field(text("event_calendar"), `<select name="editSource">${sources.map((source, index) => `<option value="${index}" ${source === editSource ? "selected" : ""}>${escape(this._calendarName(source.entity))}</option>`).join("")}</select>`) + `<small>${text("edit_scope_hint")}</small><div data-edit-status role="status"></div>` : ""}
       <div data-create-only>${field(text("template"), `<select name="template"><option value="">${text("custom_settings")}</option><option value="school">${text("school_activity")}</option></select>`)}</div>
@@ -1492,6 +1504,14 @@ class OutlookCalendarCard extends HTMLElement {
       controls.until.required = repeating && !controls.schoolYear.checked;
       controls.holidayCalendar.required = repeating && controls.schoolYear.checked;
       controls.interval.required = repeating;
+      const locked = busy || completed.size > 0;
+      controls.interval.disabled = locked || !repeating;
+      controls.until.disabled = locked || !repeating || controls.schoolYear.checked;
+      controls.holidayCalendar.disabled = locked || !repeating || !controls.schoolYear.checked;
+      controls.schoolYear.disabled = locked || !repeating;
+      form.querySelectorAll('[name="weekday"]').forEach(control => {
+        control.disabled = locked || !repeating || controls.recurrence.value !== "weekly";
+      });
       dialog.querySelector("[data-delete-template]").disabled = editing || busy || completed.size > 0 || !controls.template.value.startsWith("saved:");
       if (editing) {
         dialog.querySelectorAll("[data-create-only]").forEach(element => {
@@ -1518,6 +1538,7 @@ class OutlookCalendarCard extends HTMLElement {
       submit.disabled = editing && !!this._eventEditUnavailableReason(editSource);
     };
     form.addEventListener("input", event => {
+      event.target.removeAttribute("aria-invalid");
       if (["templateName", "template"].includes(event.target.name)) return;
       if (event.target.name === "summary") {
         controls.eventIcon.value = this._parseEventTitle(controls.summary.value).eventIcon;
@@ -1594,26 +1615,59 @@ class OutlookCalendarCard extends HTMLElement {
       submit.disabled = !plan.tasks.length;
       submit.textContent = `${text("create")} (${plan.tasks.length})`;
     };
+    const validate = () => {
+      updateVisibility();
+      const invalid = Array.from(controls).find(control => control.willValidate && !control.validity.valid);
+      if (!invalid) return true;
+      const labels = {
+        summary: text("title"), start: text("start"), end: text("end"),
+        until: text("repeat_until"), holidayCalendar: text("holiday_calendar"),
+        interval: controls.recurrence.value === "weekly" ? text("repeat_interval_weeks") : text("repeat_interval_days"),
+        eventIcon: text("event_icon"), templateName: text("template_name")
+      };
+      const message = invalid.name === "interval" && !invalid.validity.valueMissing
+        ? text("error_repeat_interval")
+        : text(invalid.validity.valueMissing ? "error_required_fields" : "error_invalid_field");
+      error.textContent = `${message}${labels[invalid.name] ? ` ${labels[invalid.name]}` : ""}`;
+      error.hidden = false;
+      invalid.setAttribute("aria-invalid", "true");
+      for (let ancestor = invalid.parentElement; ancestor && ancestor !== dialog; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName === "DETAILS") ancestor.open = true;
+      }
+      invalid.scrollIntoView?.({ block: "center" });
+      invalid.focus({ preventScroll: true });
+      invalid.reportValidity();
+      return false;
+    };
     const prepare = async () => {
-      if (!form.reportValidity()) return false;
       plan = null;
       preview.hidden = true;
       plan = await this._planEventSeries(values());
       renderPreview();
+      progress.textContent = text("preview_ready");
+      preview.scrollIntoView?.({ block: "nearest" });
       return true;
     };
     dialog.querySelector("[data-plan]").onclick = async () => {
-      if (busy || completed.size || !form.reportValidity()) return;
+      if (busy || completed.size) return;
       error.hidden = true;
+      if (!validate()) return;
+      progress.textContent = text("preparing_events");
       setBusy(true);
       try { await prepare(); }
-      catch (err) { error.textContent = err?.message || String(err); error.hidden = false; }
+      catch (err) {
+        progress.textContent = "";
+        error.textContent = err?.message || String(err);
+        error.hidden = false;
+        error.scrollIntoView?.({ block: "nearest" });
+      }
       finally { setBusy(false); if (plan) submit.disabled = !plan.tasks.length; }
     };
     form.onsubmit = async event => {
       event.preventDefault();
-      if (busy || (!completed.size && !form.reportValidity())) return;
+      if (busy) return;
       error.hidden = true;
+      if (!completed.size && !validate()) return;
       if (editing) {
         setBusy(true);
         try {
@@ -1624,6 +1678,7 @@ class OutlookCalendarCard extends HTMLElement {
         } catch (err) {
           error.textContent = err?.message || String(err);
           error.hidden = false;
+          error.scrollIntoView?.({ block: "nearest" });
         } finally { setBusy(false); }
         return;
       }
@@ -1632,10 +1687,12 @@ class OutlookCalendarCard extends HTMLElement {
       setBusy(true);
       try {
         if (!plan) {
+          progress.textContent = text("preparing_events");
           if (!await prepare()) return;
           if (needsPreview) return;
         }
         if (!plan.tasks.length) return;
+        progress.textContent = `${text("created")}: ${completed.size} / ${plan.tasks.length}`;
         await this._writeEventPlan(plan, completed, (done, total) => {
           progress.textContent = `${text("created")}: ${done} / ${total}`;
         });
@@ -1647,6 +1704,8 @@ class OutlookCalendarCard extends HTMLElement {
           ? `${text("created")}: ${completed.size} / ${plan.tasks.length}. ${err?.message || String(err)}. ${text("retry_hint")}`
           : err?.message || String(err);
         error.hidden = false;
+        error.scrollIntoView?.({ block: "nearest" });
+        if (!completed.size) progress.textContent = "";
         if (completed.size) {
           submit.textContent = text("retry_remaining");
           refresh();
@@ -1772,7 +1831,9 @@ class OutlookCalendarCard extends HTMLElement {
           error.textContent = error.textContent.slice(0, -previous.retry_hint.length) + text("retry_hint");
         }
       }
-      if (progress.textContent === previous.template_saved) progress.textContent = text("template_saved");
+      for (const key of ["template_saved", "preparing_events", "preview_ready"]) {
+        if (progress.textContent === previous[key]) { progress.textContent = text(key); break; }
+      }
       translateDialog();
       if (iconPicker) iconPicker.label = text("event_icon");
       updateVisibility();
