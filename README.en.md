@@ -176,3 +176,7 @@ npm test
 Tests cover color and prefix settings, icons, duplicate merging, write support, recurrence, multiple calendars, whole-day exclusions, summer holidays, daylight-saving changes, previews, retry after partial failure and template storage. To test daylight-saving transitions: `TZ=Europe/Paris npm test`.
 
 Compatibility with `scoped-custom-element-registry` is checked separately: its `form.elements` collection provides indexed access but does not support iteration. The card accesses controls without invoking that iterator.
+
+## License
+
+Released under the [MIT License](LICENSE).

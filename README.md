@@ -70,3 +70,7 @@ npm test
 GitHub Actions runs the JavaScript checks and the HACS validator with category `plugin`. Publishing a GitHub release runs the checks again for the tagged source and attaches `outlook-calendar-card.js` to that release. Use the value of `CARD_VERSION` as the release tag.
 
 The card is a standalone JavaScript module with its translations included. `hacs.json` identifies its existing filename in the repository root; no build step or filename migration is required.
+
+## License
+
+Released under the [MIT License](LICENSE).

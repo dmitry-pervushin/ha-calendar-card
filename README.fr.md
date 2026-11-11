@@ -176,3 +176,7 @@ npm test
 Les tests couvrent les couleurs et préfixes, icônes, regroupements de doublons, possibilités d’écriture, répétitions, calendriers multiples, exclusions de journées entières, vacances d’été, changements d’heure, aperçus, reprises après échec partiel et stockage des modèles. Pour tester les changements d’heure : `TZ=Europe/Paris npm test`.
 
 La compatibilité avec `scoped-custom-element-registry` est vérifiée séparément : sa collection `form.elements` permet un accès par index mais ne prend pas en charge l’itération. La carte accède aux contrôles sans appeler cet itérateur.
+
+## Licence
+
+Distribué sous [licence MIT](LICENSE).

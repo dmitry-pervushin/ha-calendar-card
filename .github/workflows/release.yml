@@ -31,4 +31,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$RELEASE_TAG" outlook-calendar-card.js --clobber
+        run: gh release upload "$RELEASE_TAG" outlook-calendar-card.js LICENSE --clobber
