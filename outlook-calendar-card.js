@@ -426,6 +426,7 @@ class OutlookCalendarCard extends HTMLElement {
       if (!existing) {
         merged.set(key, {
           ...ev,
+          sources: [ev],
           prefixes: ev.prefix ? [ev.prefix] : [],
           icons: ev.icon ? [ev.icon] : [],
           eventIcons: ev.eventIcon ? [ev.eventIcon] : [],
@@ -434,6 +435,7 @@ class OutlookCalendarCard extends HTMLElement {
         });
         continue;
       }
+      existing.sources.push(ev);
       if (ev.prefix && !existing.prefixes.includes(ev.prefix)) {
         existing.prefixes.push(ev.prefix);
       }
@@ -470,7 +472,7 @@ class OutlookCalendarCard extends HTMLElement {
     // TEMPORARY: ignore case, punctuation, and extra whitespace.
     return String(value)
       .toLowerCase()
-      .replace(/[^\w\s]|_/g, " ")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
@@ -607,6 +609,12 @@ class OutlookCalendarCard extends HTMLElement {
               }
               events.push({
                 icon: this._getCalendarIcon(calendar),
+                uid: e.uid,
+                recurrence_id: e.recurrence_id,
+                rrule: e.rrule,
+                rawSummary: e.summary || "",
+                description: e.description || "",
+                location: e.location || "",
                 ...this._parseEventTitle(e.summary),
                 prefix: calendar && typeof calendar.prefix === "string" ? calendar.prefix : "",
                 start: st,
@@ -643,6 +651,7 @@ class OutlookCalendarCard extends HTMLElement {
     if (!hass) return;
 
     this._eventTextColors = new Map();
+    this._renderedEvents = [];
     const start = this._config.start_hour;
     const end = this._config.end_hour;
     const step = this._config.step_minutes;
@@ -695,6 +704,17 @@ class OutlookCalendarCard extends HTMLElement {
       this.appendChild(this._cardContainer);
     }
     this._cardContainer.innerHTML = o;
+    this._cardContainer.querySelectorAll("[data-event-index]").forEach(element => {
+      const event = this._renderedEvents[Number(element.dataset.eventIndex)];
+      const open = () => this._openEventDialog(event);
+      element.onclick = open;
+      element.onkeydown = key => {
+        if (key.key === "Enter" || key.key === " ") {
+          key.preventDefault();
+          open();
+        }
+      };
+    });
     const add = this.querySelector('[data-action="add"]');
     if (add) add.onclick = () => this._openEventDialog();
     const prev = this.querySelector('[data-action="prev"]');
@@ -724,12 +744,12 @@ class OutlookCalendarCard extends HTMLElement {
     return (hass?.locale?.language || hass?.language || "").startsWith("ru") ? russian : english;
   }
 
-  _writableCalendars() {
+  _writableCalendars(feature = 1) {
     const hass = this._hass || window.hass;
     return (this._calendars || []).filter(calendar => {
       const state = hass?.states?.[calendar.entity];
       return state && !["unavailable", "unknown"].includes(state.state)
-        && (Number(state.attributes?.supported_features) & 1) !== 0;
+        && (Number(state.attributes?.supported_features) & feature) !== 0;
     });
   }
 
@@ -739,9 +759,11 @@ class OutlookCalendarCard extends HTMLElement {
     return allDay ? day : `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
-  _eventServiceData(values) {
-    if (!this._writableCalendars().some(calendar => calendar.entity === values.entity)) {
-      throw new Error(this._text("This calendar does not support adding events.", "Этот календарь не поддерживает добавление событий."));
+  _eventServiceData(values, feature = 1) {
+    if (!this._writableCalendars(feature).some(calendar => calendar.entity === values.entity)) {
+      throw new Error(feature === 4
+        ? this._text("This calendar does not support editing events.", "Этот календарь не поддерживает редактирование событий.")
+        : this._text("This calendar does not support adding events.", "Этот календарь не поддерживает добавление событий."));
     }
     const title = this._parseEventTitle(values.summary);
     if (!title.summary.trim()) {
@@ -918,10 +940,53 @@ class OutlookCalendarCard extends HTMLElement {
     }
   }
 
-  _openEventDialog() {
+  _eventInteractionAttrs(event) {
+    this._renderedEvents ||= [];
+    const index = this._renderedEvents.push(event) - 1;
+    const label = `${this._text("Open event", "Открыть событие")}: ${event.summary || ""}`;
+    return `data-event-index="${index}" role="button" tabindex="0" aria-label="${this._escapeHtml(label)}"`;
+  }
+
+  _eventEditUnavailableReason(source) {
+    const hass = this._hass || window.hass;
+    if (!this._writableCalendars(4).some(calendar => calendar.entity === source?.entity)) {
+      return this._text("This calendar does not support editing or is unavailable.", "Календарь не поддерживает редактирование или недоступен.");
+    }
+    if (typeof source?.uid !== "string" || !source.uid) {
+      return this._text("The calendar did not provide an event ID for editing.", "Календарь не передал идентификатор события для редактирования.");
+    }
+    if (source.rrule && !source.recurrence_id) {
+      return this._text("The calendar did not identify this occurrence. Edit the series in its calendar app.", "Календарь не указал идентификатор повторения. Измените серию в приложении календаря.");
+    }
+    if (typeof hass?.callWS !== "function") {
+      return this._text("The calendar update API is unavailable.", "API изменения событий недоступен.");
+    }
+    return "";
+  }
+
+  async _updateCalendarEvent(source, values) {
+    const reason = this._eventEditUnavailableReason(source);
+    if (reason) throw new Error(reason);
+    const data = this._eventServiceData({ ...values, entity: source.entity }, 4);
+    await (this._hass || window.hass).callWS({
+      type: "calendar/event/update", entity_id: source.entity, uid: source.uid,
+      ...(source.recurrence_id ? { recurrence_id: source.recurrence_id, recurrence_range: "" } : {}),
+      event: {
+        summary: data.summary, description: data.description, location: data.location,
+        dtstart: data.start_date || data.start_date_time,
+        dtend: data.end_date || data.end_date_time
+      }
+    });
+  }
+
+  _openEventDialog(editEvent = null) {
     if (this.querySelector("dialog")) return;
+    const editing = !!editEvent;
+    const sources = editing ? editEvent.sources || [editEvent] : [];
+    let editSource = sources.find(source => !this._eventEditUnavailableReason(source)) || sources[0];
+    const restoreFocus = document.activeElement;
     const calendars = this._writableCalendars();
-    if (!calendars.length) return;
+    if (!editing && !calendars.length) return;
     const text = (english, russian) => this._text(english, russian);
     const escape = value => this._escapeHtml(value);
     const allCalendars = this._allCalendarEntities();
@@ -940,16 +1005,17 @@ class OutlookCalendarCard extends HTMLElement {
       [4, text("Thu", "Чт")], [5, text("Fri", "Пт")], [6, text("Sat", "Сб")], [0, text("Sun", "Вс")]
     ];
     dialog.innerHTML = `<form style="display:grid;gap:14px;">
-      <h2 style="margin:0;font-size:20px;">${text("Add event", "Добавить событие")}</h2>
-      ${field(text("Template", "Шаблон"), `<select name="template"><option value="">${text("Custom settings", "Свои настройки")}</option><option value="school">${text("School activity", "Учебное занятие")}</option></select>`)}
-      <details><summary>${text("Save these settings as a template", "Сохранить настройки как шаблон")}</summary>
+      <h2 style="margin:0;font-size:20px;">${editing ? text("Edit event", "Редактировать событие") : text("Add event", "Добавить событие")}</h2>
+      ${editing ? field(text("Event in calendar", "Событие в календаре"), `<select name="editSource">${sources.map((source, index) => `<option value="${index}" ${source === editSource ? "selected" : ""}>${escape(this._calendarName(source.entity))}</option>`).join("")}</select>`) + `<small>${text("Only the selected calendar entry and date are changed.", "Изменяется только эта дата и запись в выбранном календаре.")}</small><div data-edit-status role="status"></div>` : ""}
+      <div data-create-only>${field(text("Template", "Шаблон"), `<select name="template"><option value="">${text("Custom settings", "Свои настройки")}</option><option value="school">${text("School activity", "Учебное занятие")}</option></select>`)}</div>
+      <details data-create-only><summary>${text("Save these settings as a template", "Сохранить настройки как шаблон")}</summary>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
           <input name="templateName" aria-label="${text("Template name", "Название шаблона")}" placeholder="${text("Template name", "Название шаблона")}" maxlength="80" style="flex:1;">
           <button type="button" data-save-template>${text("Save", "Сохранить")}</button>
           <button type="button" data-delete-template disabled>${text("Delete", "Удалить")}</button>
         </div><small>${text("Templates are saved in this browser for your Home Assistant user.", "Шаблоны сохраняются в этом браузере для вашего пользователя Home Assistant.")}</small>
       </details>
-      <fieldset><legend>${text("Add to calendars", "Добавить в календари")}</legend>${checkboxes(calendars.map(calendar => calendar.entity), "destination", true)}</fieldset>
+      <fieldset data-create-only><legend>${text("Add to calendars", "Добавить в календари")}</legend>${checkboxes(calendars.map(calendar => calendar.entity), "destination", true)}</fieldset>
       ${field(text("Title", "Название"), '<input name="summary" required maxlength="255" autofocus>')}
       <div>
         <div data-icon-fallback>${field(text("Event icon (optional)", "Иконка события (необязательно)"), '<input name="eventIcon" placeholder="mdi:tennis-ball" maxlength="120" autocomplete="off">')}</div>
@@ -975,7 +1041,7 @@ class OutlookCalendarCard extends HTMLElement {
       ${field(text("Start", "Начало"), `<input name="start" type="datetime-local" value="${this._localDateValue(start)}" required>`)}
       ${field(text("End", "Окончание"), `<input name="end" type="datetime-local" value="${this._localDateValue(end)}" required>`)}
       <small data-end-hint hidden>${text("For all-day events, end is the day after the last event day.", "Для событий на весь день окончание — день после последнего дня события.")}</small>
-      ${field(text("Repeat", "Повторение"), `<select name="recurrence"><option value="none">${text("Does not repeat", "Не повторять")}</option><option value="weekly">${text("Weekly", "По неделям")}</option><option value="daily">${text("Daily", "По дням")}</option></select>`)}
+      <div data-create-only>${field(text("Repeat", "Повторение"), `<select name="recurrence"><option value="none">${text("Does not repeat", "Не повторять")}</option><option value="weekly">${text("Weekly", "По неделям")}</option><option value="daily">${text("Daily", "По дням")}</option></select>`)}</div>
       <div data-repeat-settings hidden>
         ${field('<span data-interval-label></span>', '<input name="interval" type="number" min="1" max="52" value="1" required>')}
         <fieldset data-weekdays><legend>${text("Days of the week", "Дни недели")}</legend><div style="display:flex;gap:10px;flex-wrap:wrap;">${days.map(([day, label]) => `<label><input name="weekday" type="checkbox" value="${day}" ${day === start.getDay() ? "checked" : ""}> ${label}</label>`).join("")}</div></fieldset>
@@ -986,12 +1052,12 @@ class OutlookCalendarCard extends HTMLElement {
           <small>${text("Stops before the first event starting in June, July or August of this school year.", "До первого события, начинающегося в июне, июле или августе этого учебного года.")}</small>
         </div>
       </div>
-      <details data-exclusions><summary>${text("Skip days with events in other calendars", "Если не каникулы / не праздник")}</summary>
+      <details data-exclusions data-create-only><summary>${text("Skip days with events in other calendars", "Если не каникулы / не праздник")}</summary>
         <fieldset><legend>${text("Skip a whole day if any of these calendars has an event", "Пропускать весь день, если есть событие в любом из календарей")}</legend>${checkboxes(allCalendars, "exclusion")}</fieldset>
       </details>
       ${field(text("Location", "Место"), '<input name="location">')}
       ${field(text("Description", "Описание"), '<textarea name="description" rows="3"></textarea>')}
-      <small>${text("Repeats are created as separate events. Holiday conditions are checked when preparing the series; later calendar changes do not update created events.", "Повторения создаются отдельными событиями. Условия проверяются при подготовке серии; последующие изменения календарей не изменяют созданные события.")}</small>
+      <small data-create-only>${text("Repeats are created as separate events. Holiday conditions are checked when preparing the series; later calendar changes do not update created events.", "Повторения создаются отдельными событиями. Условия проверяются при подготовке серии; последующие изменения календарей не изменяют созданные события.")}</small>
       <div data-preview hidden aria-live="polite" style="border:1px solid var(--divider-color);border-radius:6px;padding:12px;"></div>
       <div role="status" data-progress aria-live="polite"></div>
       <div role="alert" data-error style="color:var(--error-color);" hidden></div>
@@ -1058,7 +1124,7 @@ class OutlookCalendarCard extends HTMLElement {
     });
     const updateVisibility = () => {
       updateIconPreview();
-      const repeating = controls.recurrence.value !== "none";
+      const repeating = !editing && controls.recurrence.value !== "none";
       dialog.querySelector("[data-repeat-settings]").hidden = !repeating;
       dialog.querySelector("[data-interval-label]").textContent = controls.recurrence.value === "weekly"
         ? text("Repeat every N weeks", "Повторять каждые N недель")
@@ -1070,15 +1136,30 @@ class OutlookCalendarCard extends HTMLElement {
       controls.until.required = repeating && !controls.schoolYear.checked;
       controls.holidayCalendar.required = repeating && controls.schoolYear.checked;
       controls.interval.required = repeating;
-      dialog.querySelector("[data-delete-template]").disabled = busy || completed.size > 0 || !controls.template.value.startsWith("saved:");
+      dialog.querySelector("[data-delete-template]").disabled = editing || busy || completed.size > 0 || !controls.template.value.startsWith("saved:");
+      if (editing) {
+        dialog.querySelectorAll("[data-create-only]").forEach(element => {
+          element.hidden = true;
+          element.querySelectorAll("input,select,textarea,button").forEach(control => { control.disabled = true; });
+        });
+        dialog.querySelector("[data-plan]").hidden = true;
+        const reason = this._eventEditUnavailableReason(editSource);
+        dialog.querySelector("[data-edit-status]").textContent = reason;
+        Array.from(controls).forEach(control => {
+          if (control.closest("[data-create-only]")) return;
+          control.disabled = busy || (!!reason && control !== controls.editSource && control !== dialog.querySelector("[data-cancel]"));
+        });
+        if (iconPicker) iconPicker.disabled = busy || !!reason;
+        submit.disabled = busy || !!reason;
+      }
     };
     const invalidate = () => {
       if (busy || completed.size) return;
       plan = null;
       preview.hidden = true;
       progress.textContent = "";
-      submit.textContent = text("Create", "Создать");
-      submit.disabled = false;
+      submit.textContent = editing ? text("Save changes", "Сохранить изменения") : text("Create", "Создать");
+      submit.disabled = editing && !!this._eventEditUnavailableReason(editSource);
     };
     form.addEventListener("input", event => {
       if (["templateName", "template"].includes(event.target.name)) return;
@@ -1121,7 +1202,8 @@ class OutlookCalendarCard extends HTMLElement {
       if (busy) return;
       dialog.close();
       dialog.remove();
-      this.querySelector('[data-action="add"]')?.focus();
+      if (editing && restoreFocus?.isConnected) restoreFocus.focus();
+      else this.querySelector('[data-action="add"]')?.focus();
     };
     dialog.querySelector("[data-cancel]").onclick = close;
     dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
@@ -1175,6 +1257,19 @@ class OutlookCalendarCard extends HTMLElement {
       event.preventDefault();
       if (busy || (!completed.size && !form.reportValidity())) return;
       error.hidden = true;
+      if (editing) {
+        setBusy(true);
+        try {
+          await this._updateCalendarEvent(editSource, values());
+          setBusy(false);
+          close();
+          refresh();
+        } catch (err) {
+          error.textContent = err?.message || String(err);
+          error.hidden = false;
+        } finally { setBusy(false); }
+        return;
+      }
       const input = values();
       const needsPreview = input.entities.length > 1 || input.recurrence !== "none" || input.excludeCalendars.length > 0;
       setBusy(true);
@@ -1289,7 +1384,32 @@ class OutlookCalendarCard extends HTMLElement {
       try { persistTemplates(); populateTemplates(); controls.template.value = ""; updateVisibility(); }
       catch (err) { templates = previous; error.textContent = text("Could not delete the template.", "Не удалось удалить шаблон."); error.hidden = false; }
     };
+    const populateEditSource = () => {
+      controls.summary.value = editSource.rawSummary ?? this._eventSummaryWithIcon(editSource.summary, editSource.eventIcon);
+      controls.eventIcon.value = this._parseEventTitle(controls.summary.value).eventIcon;
+      controls.allDay.checked = editSource.allDay;
+      for (const name of ["start", "end"]) {
+        controls[name].type = editSource.allDay ? "date" : "datetime-local";
+        controls[name].step = "1";
+        const seconds = editSource[name].getSeconds();
+        controls[name].value = this._localDateValue(editSource[name], editSource.allDay)
+          + (!editSource.allDay && seconds ? `:${String(seconds).padStart(2, "0")}` : "");
+      }
+      controls.description.value = editSource.description || "";
+      controls.location.value = editSource.location || "";
+      error.hidden = true;
+      invalidate();
+      updateVisibility();
+    };
     populateTemplates();
+    if (editing) {
+      controls.editSource.onchange = () => {
+        if (busy) return;
+        editSource = sources[Number(controls.editSource.value)];
+        populateEditSource();
+      };
+      populateEditSource();
+    }
     updateVisibility();
     this.appendChild(dialog);
     dialog.showModal();
@@ -1329,12 +1449,12 @@ class OutlookCalendarCard extends HTMLElement {
       const items = dayEvents.map(ev => {
         if (ev.allDay) {
           const bg = this._eventBackground(ev);
-          return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">${this._renderEventTitle(ev)}</div>`;
+          return `<div ${this._eventInteractionAttrs(ev)} style="cursor:pointer;background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">${this._renderEventTitle(ev)}</div>`;
         }
         const bg = this._eventBackground(ev);
         const timeLabel = this._formatTimeLabel(ev.start);
         const badgeText = `${this._escapeHtml(timeLabel)} ${this._renderEventPrefix(ev)}`;
-        return `<div style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">
+        return `<div ${this._eventInteractionAttrs(ev)} style="cursor:pointer;background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">
           <span style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:4px;padding:1px 4px;margin-right:4px;display:inline-block;">${badgeText}</span>
           ${this._renderEventSummary(ev)}
         </div>`;
@@ -1375,12 +1495,12 @@ class OutlookCalendarCard extends HTMLElement {
         const items = dayEvents.map(ev => {
           if (ev.allDay) {
             const bg = this._eventBackground(ev);
-            return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">${this._renderEventTitle(ev)}</div>`;
+            return `<div ${this._eventInteractionAttrs(ev)} style="cursor:pointer;background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">${this._renderEventTitle(ev)}</div>`;
           }
           const bg = this._eventBackground(ev);
           const timeLabel = this._formatTimeLabel(ev.start);
           const badgeText = `${this._escapeHtml(timeLabel)} ${this._renderEventPrefix(ev)}`;
-          return `<div style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">
+          return `<div ${this._eventInteractionAttrs(ev)} style="cursor:pointer;background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">
             <span style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:4px;padding:0 3px;margin-right:3px;display:inline-block;">${badgeText}</span>
             ${this._renderEventSummary(ev)}
           </div>`;
@@ -1448,7 +1568,7 @@ class OutlookCalendarCard extends HTMLElement {
       const width = 100 / ev._columns;
       const left = width * ev._column;
       const bg = this._eventBackground(ev);
-      return `<div style="position:absolute;left:${left}%;width:${width}%;top:${top}%;height:${height}%;background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px;font-size:12px;box-sizing:border-box;overflow:hidden;">${this._renderEventTitle(ev)}</div>`;
+      return `<div ${this._eventInteractionAttrs(ev)} style="cursor:pointer;position:absolute;left:${left}%;width:${width}%;top:${top}%;height:${height}%;background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px;font-size:12px;box-sizing:border-box;overflow:hidden;">${this._renderEventTitle(ev)}</div>`;
     }).join('');
     return o;
   }
@@ -1460,7 +1580,7 @@ class OutlookCalendarCard extends HTMLElement {
     }
     const items = allDay.map(ev => {
       const bg = this._eventBackground(ev);
-      return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._renderEventTitle(ev)}</div>`;
+      return `<div ${this._eventInteractionAttrs(ev)} style="cursor:pointer;background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._renderEventTitle(ev)}</div>`;
     }).join('');
     return `<div style="padding:6px;border-bottom:1px solid var(--divider-color);display:flex;flex-wrap:wrap;gap:6px;">${items}</div>`;
   }

@@ -651,3 +651,194 @@ test('Home Assistant icon picker updates Unicode title when available', () => {
   assert.equal(picker.value, 'mdi:cat');
   dom.window.close();
 });
+
+async function loadEditableEvent(card, overrides = {}) {
+  card.hass.states['calendar.work'].attributes.supported_features = 5;
+  const updates = [];
+  card.hass.callWS = async message => { if (message.type === 'calendar/event/update') updates.push(message); };
+  card.hass.callApi = async () => [{
+    uid: 'event-123', summary: '🎾 Tennis', description: 'Bring a racket', location: 'Court 2',
+    start: '2026-11-11T10:00:00', end: '2026-11-11T11:00:00', ...overrides
+  }];
+  await card.loadEvents(true);
+  return updates;
+}
+
+test('clicking events opens prefilled editing in day, week and month views', async () => {
+  const { card, dom } = setup();
+  await loadEditableEvent(card);
+  for (const view of ['day', 'week', 'month']) {
+    card._setView(view);
+    card.render();
+    const event = card.querySelector('[data-event-index]');
+    assert.equal(event.getAttribute('role'), 'button', view);
+    event.click();
+    const form = card.querySelector('form');
+    assert.equal(form.elements.summary.value, '🎾 Tennis', view);
+    assert.equal(form.elements.eventIcon.value, 'mdi:tennis-ball', view);
+    assert.equal(form.elements.start.value, '2026-11-11T10:00', view);
+    assert.equal(form.elements.description.value, 'Bring a racket', view);
+    assert.equal(form.elements.location.value, 'Court 2', view);
+    assert.equal(form.querySelector('[type="submit"]').textContent, 'Save changes', view);
+    assert.ok(Array.from(form.querySelectorAll('[data-create-only]')).every(element => element.hidden), view);
+    form.querySelector('[data-cancel]').click();
+  }
+  dom.window.close();
+});
+
+test('saving edits updates the existing UID without creating a new event', async () => {
+  const { card, window, dom } = setup();
+  const updates = await loadEditableEvent(card);
+  let created = 0, refreshed = 0;
+  card.hass.callService = async () => { created++; };
+  card.loadEvents = async () => { refreshed++; };
+  card.querySelector('[data-event-index]').click();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'New lesson';
+  form.querySelector('[data-icon-choice="mdi:music"]').click();
+  form.elements.start.value = '2026-11-12T15:00';
+  form.elements.end.value = '2026-11-12T16:00';
+  form.elements.description.value = 'New description';
+  form.elements.location.value = 'Room 3';
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].uid, 'event-123');
+  assert.equal(updates[0].entity_id, 'calendar.work');
+  assert.equal(updates[0].event.summary, '🎵 New lesson');
+  assert.equal(updates[0].event.description, 'New description');
+  assert.equal(updates[0].event.location, 'Room 3');
+  assert.equal(updates[0].event.dtstart, new Date('2026-11-12T15:00').toISOString());
+  assert.equal(created, 0);
+  assert.equal(refreshed, 1);
+  assert.equal(card.querySelector('dialog'), null);
+  dom.window.close();
+});
+
+test('merged copies retain separate UIDs and editing selects one original calendar entry', async () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  card.hass.states['calendar.work'].attributes.supported_features = 5;
+  card.hass.states['calendar.family'].attributes.supported_features = 5;
+  const updates = [];
+  card.hass.callWS = async message => { if (message.type === 'calendar/event/update') updates.push(message); };
+  card.hass.callApi = async (_method, path) => [{
+    uid: path.includes('calendar.work?') ? 'work-uid' : 'family-uid', summary: 'Tennis',
+    description: path.includes('calendar.work?') ? 'Work notes' : 'Family notes',
+    start: '2026-11-11T10:00:00', end: '2026-11-11T11:00:00'
+  }];
+  await card.loadEvents(true);
+  assert.equal(card._events.length, 1);
+  assert.equal(card._events[0].sources.length, 2);
+  card.querySelector('[data-event-index]').click();
+  const form = card.querySelector('form');
+  form.elements.editSource.value = '1';
+  form.elements.editSource.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(form.elements.description.value, 'Family notes');
+  form.elements.summary.value = 'Family tennis';
+  card.loadEvents = async () => {};
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].uid, 'family-uid');
+  assert.equal(updates[0].entity_id, 'calendar.family');
+  dom.window.close();
+});
+
+test('all-day events open from the keyboard and preserve exclusive end dates', async () => {
+  const { card, window, dom } = setup();
+  const updates = await loadEditableEvent(card, { start: '2026-11-11', end: '2026-11-12' });
+  card.querySelector('[data-event-index]').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  const form = card.querySelector('form');
+  assert.equal(form.elements.allDay.checked, true);
+  assert.equal(form.elements.start.type, 'date');
+  assert.equal(form.elements.end.value, '2026-11-12');
+  card.loadEvents = async () => {};
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(updates[0].event.dtstart, '2026-11-11');
+  assert.equal(updates[0].event.dtend, '2026-11-12');
+  dom.window.close();
+});
+
+test('recurring updates identify only this occurrence and do not change future ones', async () => {
+  const { card, dom } = setup();
+  const updates = await loadEditableEvent(card, { rrule: 'FREQ=WEEKLY', recurrence_id: '2026-11-11T10:00:00' });
+  const source = card._events[0].sources[0];
+  await card._updateCalendarEvent(source, { ...seriesValues(), summary: 'Changed' });
+  assert.equal(updates[0].recurrence_id, '2026-11-11T10:00:00');
+  assert.equal(updates[0].recurrence_range, '');
+  assert.equal(updates[0].event.rrule, undefined);
+  dom.window.close();
+});
+
+test('update-only calendars can be edited without CREATE_EVENT support', async () => {
+  const { card, dom } = setup();
+  const updates = await loadEditableEvent(card);
+  card.hass.states['calendar.work'].attributes.supported_features = 4;
+  assert.equal(card._writableCalendars().length, 0);
+  card.querySelector('[data-event-index]').click();
+  assert.equal(card.querySelector('[type="submit"]').disabled, false);
+  await card._updateCalendarEvent(card._events[0].sources[0], seriesValues());
+  assert.equal(updates.length, 1);
+  dom.window.close();
+});
+
+test('read-only calendars and missing event identities explain why saving is unavailable', async () => {
+  const { card, dom } = setup();
+  await loadEditableEvent(card);
+  const source = card._events[0].sources[0];
+  assert.match(card._eventEditUnavailableReason({ ...source, uid: '' }), /event ID/);
+  assert.match(card._eventEditUnavailableReason({ ...source, rrule: 'FREQ=WEEKLY', recurrence_id: undefined }), /occurrence/);
+  card.hass.states['calendar.work'].attributes.supported_features = 1;
+  card.querySelector('[data-event-index]').click();
+  assert.match(card.querySelector('[data-edit-status]').textContent, /does not support editing/);
+  assert.equal(card.querySelector('[type="submit"]').disabled, true);
+  assert.equal(card.querySelector('form').elements.summary.disabled, true);
+  assert.equal(card.querySelector('[data-cancel]').disabled, false);
+  await assert.rejects(() => card._updateCalendarEvent(source, seriesValues()), /does not support editing/);
+  dom.window.close();
+});
+
+test('update failure preserves editable fields and invalid dates are rejected', async () => {
+  const { card, window, dom } = setup();
+  await loadEditableEvent(card);
+  card.hass.callWS = async () => { throw new Error('Update denied'); };
+  card.querySelector('[data-event-index]').click();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Keep my changes';
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(card.querySelector('[data-error]').textContent, 'Update denied');
+  assert.equal(form.elements.summary.disabled, false);
+  assert.equal(form.elements.summary.value, 'Keep my changes');
+  assert.equal(form.querySelector('[type="submit"]').disabled, false);
+  await assert.rejects(() => card._updateCalendarEvent(card._events[0].sources[0], seriesValues({ end: '2026-11-14T09:00' })), /End must be after start/);
+  dom.window.close();
+});
+
+test('editing preserves seconds in externally created events', async () => {
+  const { card, window, dom } = setup();
+  const updates = await loadEditableEvent(card, { start: '2026-11-11T10:00:30', end: '2026-11-11T11:00:45' });
+  card.querySelector('[data-event-index]').click();
+  const form = card.querySelector('form');
+  assert.equal(form.elements.start.value, '2026-11-11T10:00:30.000');
+  card.loadEvents = async () => {};
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(updates[0].event.dtstart, new Date('2026-11-11T10:00:30').toISOString());
+  assert.equal(updates[0].event.dtend, new Date('2026-11-11T11:00:45').toISOString());
+  dom.window.close();
+});
+
+test('editing a Cyrillic title separates formerly merged copies', async () => {
+  const { card, dom } = setup();
+  const base = { start: new Date(2026, 10, 11, 10), end: new Date(2026, 10, 11, 11), allDay: false };
+  const original = card._mergeDuplicateEvents([{ ...base, summary: 'Теннис', entity: 'calendar.work', uid: 'a' }, { ...base, summary: 'Теннис', entity: 'calendar.family', uid: 'b' }]);
+  assert.equal(original.length, 1);
+  const renamed = card._mergeDuplicateEvents([{ ...base, summary: 'Теннис', entity: 'calendar.work', uid: 'a' }, { ...base, summary: 'Музыка', entity: 'calendar.family', uid: 'b' }]);
+  assert.equal(renamed.length, 2);
+  const same = card._mergeDuplicateEvents([{ ...base, summary: 'Теннис!' }, { ...base, summary: '  ТЕННИС  ' }]);
+  assert.equal(same.length, 1);
+  dom.window.close();
+});
