@@ -5,7 +5,7 @@ const { JSDOM } = require('jsdom');
 const source = fs.readFileSync(require.resolve('../outlook-calendar-card.js'), 'utf8');
 
 function setup() {
-  const dom = new JSDOM('', { runScripts: 'outside-only' });
+  const dom = new JSDOM('', { runScripts: 'outside-only', url: 'https://home-assistant.test' });
   const { window } = dom;
   window.console.warn = () => {};
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -239,5 +239,303 @@ test('registry errors fall back to distinct palette colors without losing events
   assert.equal(card._events.length, 1);
   assert.equal(card._events[0].color, 'var(--color-2, var(--primary-color))');
   assert.equal(await card._getCalendarColor({ entity: 'calendar.readonly' }), 'var(--color-1, var(--primary-color))');
+  dom.window.close();
+});
+
+function seriesValues(overrides = {}) {
+  return {
+    entities: ['calendar.work'], summary: 'Class', start: '2026-11-14T10:00', end: '2026-11-14T11:00',
+    allDay: false, description: '', location: '', recurrence: 'weekly', interval: 1,
+    weekdays: [6], until: '2026-12-05', excludeCalendars: [], schoolYear: false,
+    ...overrides
+  };
+}
+
+function addCalendar(card, entity, writable = false) {
+  card.hass.states[entity] = { state: 'off', attributes: { friendly_name: entity, supported_features: writable ? 1 : 0 } };
+  if (writable) card.setConfig({ calendars: [...card._calendars, { entity }] });
+}
+
+const dates = (card, items) => Array.from(items, item => card._localDateValue(item.start, true));
+
+test('weekly series creates every Saturday in multiple calendars', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  const plan = await card._planEventSeries(seriesValues({ entities: ['calendar.work', 'calendar.family', 'calendar.work'] }));
+  assert.deepEqual(dates(card, plan.accepted), ['2026-11-14', '2026-11-21', '2026-11-28', '2026-12-05']);
+  assert.equal(plan.tasks.length, 8);
+  const sent = [];
+  card.hass.callService = async (_domain, _service, data) => sent.push(data);
+  await card._writeEventPlan(plan, new Set());
+  assert.equal(sent.length, 8);
+  assert.equal(sent[0].entity_id, 'calendar.work');
+  assert.equal(sent[1].entity_id, 'calendar.family');
+  dom.window.close();
+});
+
+test('a holiday at another time of day still excludes the entire date', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.holidays');
+  card.hass.callApi = async () => [
+    { summary: 'Evening holiday', start: { dateTime: '2026-11-21T20:00:00' }, end: { dateTime: '2026-11-21T21:00:00' } },
+    { summary: 'Break', start: { date: '2026-11-28' }, end: { date: '2026-12-01' } }
+  ];
+  const plan = await card._planEventSeries(seriesValues({ excludeCalendars: ['calendar.holidays'] }));
+  assert.deepEqual(dates(card, plan.accepted), ['2026-11-14', '2026-12-05']);
+  assert.equal(plan.skipped.length, 2);
+  assert.equal(plan.skipped[0].reasons[0].summary, 'Evening holiday');
+  dom.window.close();
+});
+
+test('any selected exclusion calendar can veto a date; midnight ends are exclusive', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  addCalendar(card, 'calendar.holidays');
+  card.hass.callApi = async (_method, path) => path.includes('calendar.breaks?')
+    ? [{ summary: 'Break', start: '2026-11-13', end: '2026-11-14' }]
+    : [{ summary: 'Holiday', start: '2026-11-21', end: '2026-11-22' }];
+  const plan = await card._planEventSeries(seriesValues({ excludeCalendars: ['calendar.breaks', 'calendar.holidays'] }));
+  assert.deepEqual(dates(card, plan.accepted), ['2026-11-14', '2026-11-28', '2026-12-05']);
+  assert.equal(plan.skipped.length, 1);
+  dom.window.close();
+});
+
+test('school-year cutoff is the earliest event starting in summer, regardless of title', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card.hass.callApi = async (_method, path) => {
+    const url = new URL(path, 'https://ha.test/');
+    assert.equal(new Date(url.searchParams.get('start')).getFullYear(), 2027);
+    return [
+      { summary: 'August break', start: '2027-08-01', end: '2027-08-31' },
+      { summary: 'School closed', start: '2027-06-12', end: '2027-07-01' },
+      { summary: 'Spring break', start: '2027-05-29', end: '2027-06-05' }
+    ];
+  };
+  const plan = await card._planEventSeries(seriesValues({ start: '2027-05-29T10:00', end: '2027-05-29T11:00', schoolYear: true, holidayCalendar: 'calendar.breaks' }));
+  assert.deepEqual(dates(card, plan.accepted), ['2027-05-29', '2027-06-05']);
+  assert.equal(plan.summer.summary, 'School closed');
+  dom.window.close();
+});
+
+test('September school year searches the following summer; missing summer aborts', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card.hass.callApi = async (_method, path) => {
+    const url = new URL(path, 'https://ha.test/');
+    assert.equal(new Date(url.searchParams.get('start')).getFullYear(), 2027);
+    return [];
+  };
+  await assert.rejects(() => card._planEventSeries(seriesValues({ schoolYear: true, holidayCalendar: 'calendar.breaks' })), /No summer holiday/);
+  dom.window.close();
+});
+
+test('calendar read errors and malformed exclusion dates abort before any writes', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card.hass.callApi = async () => { throw new Error('Read denied'); };
+  await assert.rejects(() => card._planEventSeries(seriesValues({ excludeCalendars: ['calendar.breaks'] })), /Read denied/);
+  card.hass.callApi = async () => [{ summary: 'Bad', start: 'bad-date', end: 'bad-date' }];
+  await assert.rejects(() => card._planEventSeries(seriesValues({ excludeCalendars: ['calendar.breaks'] })), /Invalid event dates/);
+  card.hass.states['calendar.breaks'].state = 'unavailable';
+  await assert.rejects(() => card._planEventSeries(seriesValues({ excludeCalendars: ['calendar.breaks'] })), /Calendar unavailable/);
+  dom.window.close();
+});
+
+test('all-day repeats preserve exclusive ends and skip multi-day occurrences touching a holiday', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card.hass.callApi = async () => [{ start: '2026-11-22', end: '2026-11-23', summary: 'Sunday holiday' }];
+  const plan = await card._planEventSeries(seriesValues({ allDay: true, start: '2026-11-14', end: '2026-11-16', excludeCalendars: ['calendar.breaks'] }));
+  assert.equal(plan.tasks[0].data.start_date, '2026-11-14');
+  assert.equal(plan.tasks[0].data.end_date, '2026-11-16');
+  assert.deepEqual(dates(card, plan.skipped), ['2026-11-21']);
+  dom.window.close();
+});
+
+test('daily and every-other-week repeats honor interval and inclusive end date', async () => {
+  const { card, dom } = setup();
+  const daily = await card._planEventSeries(seriesValues({ recurrence: 'daily', interval: 2, until: '2026-11-18' }));
+  assert.deepEqual(dates(card, daily.accepted), ['2026-11-14', '2026-11-16', '2026-11-18']);
+  const weekly = await card._planEventSeries(seriesValues({ interval: 2 }));
+  assert.deepEqual(dates(card, weekly.accepted), ['2026-11-14', '2026-11-28']);
+  await assert.rejects(() => card._planEventSeries(seriesValues({ weekdays: [] })), /Select days/);
+  await assert.rejects(() => card._planEventSeries(seriesValues({ until: '' })), /end date/);
+  await assert.rejects(() => card._planEventSeries(seriesValues({ entities: [] })), /at least one calendar/);
+  dom.window.close();
+});
+
+test('retry skips already completed calendar writes', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  const plan = await card._planEventSeries(seriesValues({ recurrence: 'none', entities: ['calendar.work', 'calendar.family'] }));
+  const completed = new Set();
+  let fail = true;
+  const successes = [];
+  card.hass.callService = async (_domain, _service, data) => {
+    if (data.entity_id === 'calendar.family' && fail) throw new Error('Offline');
+    successes.push(data.entity_id);
+  };
+  await assert.rejects(() => card._writeEventPlan(plan, completed), /Offline/);
+  assert.equal(completed.size, 1);
+  fail = false;
+  await card._writeEventPlan(plan, completed);
+  assert.deepEqual(successes, ['calendar.work', 'calendar.family']);
+  dom.window.close();
+});
+
+test('complex form previews before writing, and invalidates preview on edits', async () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  const sent = [];
+  card.hass.callService = async (_domain, _service, data) => sent.push(data);
+  card.loadEvents = async () => {};
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Class';
+  form.querySelector('[name="destination"][value="calendar.family"]').click();
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(sent.length, 0);
+  assert.equal(card.querySelector('[data-preview]').hidden, false);
+  form.elements.summary.value = 'New title';
+  form.elements.summary.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(card.querySelector('[data-preview]').hidden, true);
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(sent.length, 0);
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].summary, 'New title');
+  dom.window.close();
+});
+
+test('templates save and restore calendar selections, recurrence and time on a new date', () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card._openEventDialog();
+  let form = card.querySelector('form');
+  form.elements.summary.value = 'Swimming';
+  form.elements.start.value = '2026-11-14T15:30';
+  form.elements.end.value = '2026-11-14T16:30';
+  form.elements.recurrence.value = 'weekly';
+  form.elements.schoolYear.checked = true;
+  form.elements.holidayCalendar.value = 'calendar.breaks';
+  form.querySelector('[name="exclusion"][value="calendar.breaks"]').checked = true;
+  form.elements.templateName.value = 'Saturday swimming';
+  form.querySelector('[data-save-template]').click();
+  assert.equal(card._readEventTemplates().length, 1);
+  assert.equal(card._readEventTemplates()[0].values.start, undefined);
+  form.querySelector('[data-cancel]').click();
+  card._setActiveDate(new Date(2027, 0, 9));
+  card._openEventDialog();
+  form = card.querySelector('form');
+  form.elements.template.value = 'saved:0';
+  form.elements.template.dispatchEvent(new window.Event('change'));
+  assert.equal(form.elements.start.value, '2027-01-09T15:30');
+  assert.equal(form.elements.end.value, '2027-01-09T16:30');
+  assert.equal(form.elements.summary.value, 'Swimming');
+  assert.equal(form.elements.schoolYear.checked, true);
+  assert.equal(form.querySelector('[name="exclusion"][value="calendar.breaks"]').checked, true);
+  dom.window.close();
+});
+
+test('school template preselects holiday calendars and enables school-year recurrence', () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card.hass.states['calendar.breaks'].attributes.friendly_name = 'Каникулы';
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.template.value = 'school';
+  form.elements.template.dispatchEvent(new window.Event('change'));
+  assert.equal(form.elements.recurrence.value, 'weekly');
+  assert.equal(form.elements.schoolYear.checked, true);
+  assert.equal(form.elements.holidayCalendar.value, 'calendar.breaks');
+  assert.equal(form.querySelector('[name="exclusion"][value="calendar.breaks"]').checked, true);
+  assert.equal(card.querySelector('[data-school-year]').hidden, false);
+  dom.window.close();
+});
+
+test('weekly wall-clock times survive daylight-saving transitions', async () => {
+  const { card, dom } = setup();
+  const plan = await card._planEventSeries(seriesValues({ start: '2027-03-27T10:00', end: '2027-03-27T11:00', until: '2027-04-10' }));
+  assert.deepEqual(dates(card, plan.accepted), ['2027-03-27', '2027-04-03', '2027-04-10']);
+  assert.ok(plan.accepted.every(item => item.start.getHours() === 10 && item.end.getHours() === 11));
+  const allDay = await card._planEventSeries(seriesValues({ allDay: true, recurrence: 'daily', start: '2027-03-27', end: '2027-03-28', until: '2027-03-30' }));
+  assert.equal(allDay.tasks[2].data.start_date, '2027-03-29');
+  assert.equal(allDay.tasks[2].data.end_date, '2027-03-30');
+  dom.window.close();
+});
+
+test('overnight events also check the following day for holidays', async () => {
+  const { card, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card.hass.callApi = async () => [{ start: '2026-11-15T18:00:00', end: '2026-11-15T19:00:00', summary: 'Sunday holiday' }];
+  const plan = await card._planEventSeries(seriesValues({ start: '2026-11-14T23:00', end: '2026-11-15T01:00', until: '2026-11-21', excludeCalendars: ['calendar.breaks'] }));
+  assert.deepEqual(dates(card, plan.accepted), ['2026-11-21']);
+  assert.deepEqual(dates(card, plan.skipped), ['2026-11-14']);
+  dom.window.close();
+});
+
+test('partial failure locks the plan and UI retry only sends remaining writes', async () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  let fail = true;
+  const successes = [];
+  card.loadEvents = async () => {};
+  card.hass.callService = async (_domain, _service, data) => {
+    if (fail && data.entity_id === 'calendar.family') throw new Error('Offline');
+    successes.push(data.entity_id);
+  };
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Class';
+  form.querySelector('[name="destination"][value="calendar.family"]').click();
+  const submit = () => form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  submit(); await tick(); // Preview.
+  submit(); await tick(); // First calendar succeeds, second fails.
+  assert.equal(form.elements.summary.disabled, true);
+  assert.equal(form.querySelector('[type="submit"]').disabled, false);
+  assert.match(card.querySelector('[data-error]').textContent, /1 \/ 2/);
+  fail = false;
+  submit(); await tick();
+  assert.deepEqual(successes, ['calendar.work', 'calendar.family']);
+  assert.equal(card.querySelector('dialog'), null);
+  dom.window.close();
+});
+
+test('an all-excluded preview can be edited and recreated without getting stuck', async () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.breaks');
+  card.hass.callApi = async () => [{ start: '2026-11-11', end: '2026-11-12', summary: 'Holiday' }];
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Class';
+  const exclusion = form.querySelector('[name="exclusion"][value="calendar.breaks"]');
+  exclusion.click();
+  form.querySelector('[data-plan]').click(); await tick();
+  assert.equal(form.querySelector('[type="submit"]').disabled, true);
+  exclusion.click();
+  assert.equal(form.querySelector('[type="submit"]').disabled, false);
+  assert.equal(card.querySelector('[data-preview]').hidden, true);
+  dom.window.close();
+});
+
+test('templates are scoped per user and can be deleted', () => {
+  const { card, window, dom } = setup();
+  card.hass.user = { id: 'alice' };
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.templateName.value = 'Class';
+  form.querySelector('[data-save-template]').click();
+  assert.equal(card._readEventTemplates().length, 1);
+  card.hass.user = { id: 'bob' };
+  assert.equal(card._readEventTemplates().length, 0);
+  card.hass.user = { id: 'alice' };
+  form.querySelector('[data-delete-template]').click();
+  assert.equal(card._readEventTemplates().length, 0);
+  window.localStorage.setItem(card._eventTemplateStorageKey(), 'broken json');
+  assert.equal(card._readEventTemplates().length, 0);
   dom.window.close();
 });

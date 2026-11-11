@@ -709,49 +709,306 @@ class OutlookCalendarCard extends HTMLElement {
     };
   }
 
+  _allCalendarEntities() {
+    const hass = this._hass || window.hass;
+    return Object.keys(hass?.states || {}).filter(entity => entity.startsWith("calendar.")).sort();
+  }
+
+  _calendarName(entity) {
+    return (this._hass || window.hass)?.states?.[entity]?.attributes?.friendly_name || entity;
+  }
+
+  _dateOrdinal(date) {
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+  }
+
+  async _readPlanningCalendar(entity, start, end) {
+    const hass = this._hass || window.hass;
+    const state = hass?.states?.[entity];
+    if (!state || ["unknown", "unavailable"].includes(state.state)) {
+      throw new Error(`${this._text("Calendar unavailable", "Календарь недоступен")}: ${this._calendarName(entity)}`);
+    }
+    const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+    const events = await hass.callApi("GET", `calendars/${entity}?${query}`);
+    if (!Array.isArray(events)) throw new Error(this._text("Could not read calendar events.", "Не удалось прочитать события календаря."));
+    return events.map(event => {
+      const parsed = this._parseEventTimes(event);
+      if (!parsed || !Number.isFinite(parsed.start.getTime()) || !Number.isFinite(parsed.end.getTime()) || parsed.end <= parsed.start) {
+        throw new Error(`${this._text("Invalid event dates in calendar", "Некорректные даты события в календаре")}: ${this._calendarName(entity)}`);
+      }
+      return { ...parsed, summary: event.summary || "", entity };
+    });
+  }
+
+  async _planEventSeries(values) {
+    const entities = [...new Set(values.entities || [])];
+    if (!entities.length) throw new Error(this._text("Select at least one calendar.", "Выберите хотя бы один календарь."));
+    for (const entity of entities) this._eventServiceData({ ...values, entity });
+    const start = new Date(values.allDay ? `${values.start}T00:00:00` : values.start);
+    const end = new Date(values.allDay ? `${values.end}T00:00:00` : values.end);
+    const recurrence = values.recurrence || "none";
+    if (!["none", "daily", "weekly"].includes(recurrence)) throw new Error(this._text("Invalid repeat rule.", "Некорректное правило повторения."));
+    const interval = recurrence === "none" ? 1 : Number(values.interval);
+    if (!Number.isInteger(interval) || interval < 1 || interval > 52) throw new Error(this._text("Repeat interval must be between 1 and 52.", "Интервал повторения должен быть от 1 до 52."));
+    const weekdays = [...new Set(values.weekdays || [])].map(Number);
+    if (recurrence === "weekly" && (!weekdays.length || weekdays.some(day => !Number.isInteger(day) || day < 0 || day > 6))) {
+      throw new Error(this._text("Select days of the week.", "Выберите дни недели."));
+    }
+    let summer = null;
+    let limit = new Date(start);
+    limit.setHours(0, 0, 0, 0);
+    if (recurrence !== "none") {
+      if (values.schoolYear) {
+        const year = start.getFullYear() + (start.getMonth() >= 8 ? 1 : 0);
+        const holidays = await this._readPlanningCalendar(values.holidayCalendar, new Date(year, 5, 1), new Date(year, 8, 1));
+        summer = holidays.filter(event => event.start.getFullYear() === year && event.start.getMonth() >= 5 && event.start.getMonth() <= 7)
+          .sort((a, b) => a.start - b.start)[0];
+        if (!summer) throw new Error(this._text("No summer holiday event found. Select another calendar or set an end date.", "Летние каникулы не найдены. Выберите другой календарь или укажите дату окончания."));
+        limit = new Date(summer.start);
+        limit.setHours(0, 0, 0, 0);
+        limit.setDate(limit.getDate() - 1);
+      } else {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.until || "")) throw new Error(this._text("Set a repeat end date.", "Укажите дату окончания повторений."));
+        limit = new Date(`${values.until}T00:00:00`);
+      }
+    }
+    const horizon = new Date(start);
+    horizon.setFullYear(horizon.getFullYear() + 2);
+    if (!Number.isFinite(limit.getTime()) || limit > horizon || this._dateOrdinal(limit) < this._dateOrdinal(start)) {
+      throw new Error(this._text("Choose an end date after the start, within two years.", "Выберите окончание не раньше начала и не более чем через два года."));
+    }
+    const endDayOffset = this._dateOrdinal(end) - this._dateOrdinal(start);
+    const monday = new Date(start);
+    monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+    const candidates = [];
+    const firstDay = new Date(start);
+    firstDay.setHours(0, 0, 0, 0);
+    for (const day = firstDay; this._dateOrdinal(day) <= this._dateOrdinal(limit); day.setDate(day.getDate() + 1)) {
+      const dayIndex = this._dateOrdinal(day) - this._dateOrdinal(start);
+      const weekIndex = Math.floor((this._dateOrdinal(day) - this._dateOrdinal(monday)) / 7);
+      if (recurrence === "daily" && dayIndex % interval !== 0) continue;
+      if (recurrence === "weekly" && (weekIndex % interval !== 0 || !weekdays.includes(day.getDay()))) continue;
+      const occurrenceStart = new Date(day);
+      occurrenceStart.setHours(start.getHours(), start.getMinutes(), start.getSeconds(), 0);
+      const occurrenceEnd = new Date(day);
+      occurrenceEnd.setDate(occurrenceEnd.getDate() + endDayOffset);
+      occurrenceEnd.setHours(end.getHours(), end.getMinutes(), end.getSeconds(), 0);
+      if (summer) {
+        const summerDay = new Date(summer.start);
+        summerDay.setHours(0, 0, 0, 0);
+        if (occurrenceEnd > summerDay) continue;
+      }
+      candidates.push({ start: occurrenceStart, end: occurrenceEnd });
+      if (candidates.length > 366) throw new Error(this._text("Limit the series to 366 dates or fewer.", "Сократите серию до 366 дат или меньше."));
+    }
+    if (!candidates.length) throw new Error(this._text("No dates match this repeat rule.", "Нет дат, подходящих под правило повторения."));
+    const excludedEntities = [...new Set(values.excludeCalendars || [])];
+    const queryStart = new Date(candidates[0].start);
+    queryStart.setHours(0, 0, 0, 0);
+    const queryEnd = new Date(Math.max(...candidates.map(item => item.end.getTime())));
+    if (queryEnd.getHours() || queryEnd.getMinutes() || queryEnd.getSeconds() || queryEnd.getMilliseconds()) queryEnd.setDate(queryEnd.getDate() + 1);
+    queryEnd.setHours(0, 0, 0, 0);
+    const exclusions = [];
+    for (const entity of excludedEntities) exclusions.push(...await this._readPlanningCalendar(entity, queryStart, queryEnd));
+    const accepted = [], skipped = [];
+    for (const occurrence of candidates) {
+      const dayStart = new Date(occurrence.start);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(occurrence.end);
+      if (dayEnd.getHours() || dayEnd.getMinutes() || dayEnd.getSeconds() || dayEnd.getMilliseconds()) dayEnd.setDate(dayEnd.getDate() + 1);
+      dayEnd.setHours(0, 0, 0, 0);
+      const reasons = exclusions.filter(event => event.start < dayEnd && event.end > dayStart);
+      if (reasons.length) skipped.push({ ...occurrence, reasons });
+      else accepted.push(occurrence);
+    }
+    const tasks = accepted.flatMap(occurrence => entities.map(entity => ({
+      entity,
+      start: occurrence.start,
+      data: this._eventServiceData({ ...values, entity,
+        start: this._localDateValue(occurrence.start, values.allDay),
+        end: this._localDateValue(occurrence.end, values.allDay)
+      })
+    })));
+    return { accepted, skipped, tasks, summer, entities };
+  }
+
+  async _writeEventPlan(plan, completed, onProgress = () => {}) {
+    for (let index = 0; index < plan.tasks.length; index++) {
+      if (completed.has(index)) continue;
+      const task = plan.tasks[index];
+      if (!this._writableCalendars().some(calendar => calendar.entity === task.entity)) {
+        throw new Error(`${this._text("Calendar is no longer writable", "Запись в календарь больше недоступна")}: ${this._calendarName(task.entity)}`);
+      }
+      await (this._hass || window.hass).callService("calendar", "create_event", task.data);
+      completed.add(index);
+      onProgress(completed.size, plan.tasks.length);
+    }
+  }
+
+  _eventTemplateStorageKey() {
+    const hass = this._hass || window.hass;
+    return `outlook-calendar-card:event-templates:${hass?.user?.id || "default"}`;
+  }
+
+  _readEventTemplates() {
+    try {
+      const templates = JSON.parse(localStorage.getItem(this._eventTemplateStorageKey()) || "[]");
+      return Array.isArray(templates) ? templates.filter(item => item && typeof item.name === "string" && item.values && typeof item.values === "object") : [];
+    } catch (err) {
+      this._log("Could not read event templates", err);
+      return [];
+    }
+  }
+
   _openEventDialog() {
     if (this.querySelector("dialog")) return;
     const calendars = this._writableCalendars();
     if (!calendars.length) return;
-    const hass = this._hass || window.hass;
     const text = (english, russian) => this._text(english, russian);
+    const escape = value => this._escapeHtml(value);
+    const allCalendars = this._allCalendarEntities();
     const dialog = document.createElement("dialog");
-    dialog.style.cssText = "background:var(--card-background-color, white);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:12px;padding:24px;width:min(420px, calc(100vw - 64px));max-height:80vh;overflow:auto;";
+    dialog.style.cssText = "background:var(--card-background-color, white);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:12px;padding:24px;width:min(560px, calc(100vw - 64px));max-height:85vh;overflow:auto;";
     const start = this._getActiveDate();
     start.setHours(this._config.start_hour, 0, 0, 0);
     const end = new Date(start.getTime() + 3600000);
+    const defaultUntil = new Date(start);
+    defaultUntil.setMonth(defaultUntil.getMonth() + 3);
     const field = (label, input) => `<label style="display:grid;gap:4px;">${label}${input}</label>`;
+    const options = entities => entities.map(entity => `<option value="${escape(entity)}">${escape(this._calendarName(entity))}</option>`).join("");
+    const checkboxes = (entities, name, selectFirst = false) => entities.map((entity, index) => `<label style="display:block;margin:6px 0;"><input type="checkbox" name="${name}" value="${escape(entity)}" ${selectFirst && index === 0 ? "checked" : ""}> ${escape(this._calendarName(entity))}</label>`).join("");
+    const days = [
+      [1, text("Mon", "Пн")], [2, text("Tue", "Вт")], [3, text("Wed", "Ср")],
+      [4, text("Thu", "Чт")], [5, text("Fri", "Пт")], [6, text("Sat", "Сб")], [0, text("Sun", "Вс")]
+    ];
     dialog.innerHTML = `<form style="display:grid;gap:14px;">
       <h2 style="margin:0;font-size:20px;">${text("Add event", "Добавить событие")}</h2>
-      ${field(text("Calendar", "Календарь"), `<select name="entity" required>${calendars.map(calendar => `<option value="${this._escapeHtml(calendar.entity)}">${this._escapeHtml(hass.states[calendar.entity]?.attributes?.friendly_name || calendar.entity)}</option>`).join("")}</select>`)}
+      ${field(text("Template", "Шаблон"), `<select name="template"><option value="">${text("Custom settings", "Свои настройки")}</option><option value="school">${text("School activity", "Учебное занятие")}</option></select>`)}
+      <details><summary>${text("Save these settings as a template", "Сохранить настройки как шаблон")}</summary>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+          <input name="templateName" aria-label="${text("Template name", "Название шаблона")}" placeholder="${text("Template name", "Название шаблона")}" maxlength="80" style="flex:1;">
+          <button type="button" data-save-template>${text("Save", "Сохранить")}</button>
+          <button type="button" data-delete-template disabled>${text("Delete", "Удалить")}</button>
+        </div><small>${text("Templates are saved in this browser for your Home Assistant user.", "Шаблоны сохраняются в этом браузере для вашего пользователя Home Assistant.")}</small>
+      </details>
+      <fieldset><legend>${text("Add to calendars", "Добавить в календари")}</legend>${checkboxes(calendars.map(calendar => calendar.entity), "destination", true)}</fieldset>
       ${field(text("Title", "Название"), '<input name="summary" required maxlength="255" autofocus>')}
       <label><input name="allDay" type="checkbox"> ${text("All day", "Весь день")}</label>
       ${field(text("Start", "Начало"), `<input name="start" type="datetime-local" value="${this._localDateValue(start)}" required>`)}
       ${field(text("End", "Окончание"), `<input name="end" type="datetime-local" value="${this._localDateValue(end)}" required>`)}
       <small data-end-hint hidden>${text("For all-day events, end is the day after the last event day.", "Для событий на весь день окончание — день после последнего дня события.")}</small>
+      ${field(text("Repeat", "Повторение"), `<select name="recurrence"><option value="none">${text("Does not repeat", "Не повторять")}</option><option value="weekly">${text("Weekly", "По неделям")}</option><option value="daily">${text("Daily", "По дням")}</option></select>`)}
+      <div data-repeat-settings hidden>
+        ${field('<span data-interval-label></span>', '<input name="interval" type="number" min="1" max="52" value="1" required>')}
+        <fieldset data-weekdays><legend>${text("Days of the week", "Дни недели")}</legend><div style="display:flex;gap:10px;flex-wrap:wrap;">${days.map(([day, label]) => `<label><input name="weekday" type="checkbox" value="${day}" ${day === start.getDay() ? "checked" : ""}> ${label}</label>`).join("")}</div></fieldset>
+        <label style="display:block;margin:12px 0;"><input name="schoolYear" type="checkbox"> ${text("Until the end of the school year", "До конца учебного года")}</label>
+        <div data-until>${field(text("Repeat through (inclusive)", "Повторять по дату включительно"), `<input name="until" type="date" value="${this._localDateValue(defaultUntil, true)}">`)}</div>
+        <div data-school-year hidden>
+          ${field(text("School holiday calendar", "Календарь каникул"), `<select name="holidayCalendar"><option value="">${text("Select a calendar", "Выберите календарь")}</option>${options(allCalendars)}</select>`)}
+          <small>${text("Stops before the first event starting in June, July or August of this school year.", "До первого события, начинающегося в июне, июле или августе этого учебного года.")}</small>
+        </div>
+      </div>
+      <details data-exclusions><summary>${text("Skip days with events in other calendars", "Если не каникулы / не праздник")}</summary>
+        <fieldset><legend>${text("Skip a whole day if any of these calendars has an event", "Пропускать весь день, если есть событие в любом из календарей")}</legend>${checkboxes(allCalendars, "exclusion")}</fieldset>
+      </details>
       ${field(text("Location", "Место"), '<input name="location">')}
       ${field(text("Description", "Описание"), '<textarea name="description" rows="3"></textarea>')}
+      <small>${text("Repeats are created as separate events. Holiday conditions are checked when preparing the series; later calendar changes do not update created events.", "Повторения создаются отдельными событиями. Условия проверяются при подготовке серии; последующие изменения календарей не изменяют созданные события.")}</small>
+      <div data-preview hidden aria-live="polite" style="border:1px solid var(--divider-color);border-radius:6px;padding:12px;"></div>
+      <div role="status" data-progress aria-live="polite"></div>
       <div role="alert" data-error style="color:var(--error-color);" hidden></div>
-      <div style="display:flex;justify-content:flex-end;gap:12px;">
+      <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px;">
         <button type="button" data-cancel>${text("Cancel", "Отмена")}</button>
+        <button type="button" data-plan>${text("Preview", "Предпросмотр")}</button>
         <button type="submit">${text("Create", "Создать")}</button>
       </div>
     </form>`;
     dialog.querySelectorAll("input:not([type=checkbox]), select, textarea, button").forEach(control => {
-      control.style.cssText = "font:inherit;color:inherit;background:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:6px;padding:8px;min-width:0;";
+      const layout = control.style.cssText;
+      control.style.cssText = `${layout}font:inherit;color:inherit;background:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:6px;padding:8px;min-width:0;box-sizing:border-box;`;
+    });
+    dialog.querySelectorAll("fieldset").forEach(fieldset => {
+      fieldset.style.cssText = "min-width:0;border:1px solid var(--divider-color);border-radius:6px;";
     });
     const form = dialog.querySelector("form");
     const controls = form.elements;
+    const submit = dialog.querySelector('[type="submit"]');
+    const preview = dialog.querySelector("[data-preview]");
+    const error = dialog.querySelector("[data-error]");
+    const progress = dialog.querySelector("[data-progress]");
+    let plan = null;
+    const completed = new Set();
+    let busy = false;
+    let templates = this._readEventTemplates();
+    const selected = name => Array.from(form.querySelectorAll(`input[name="${name}"]:checked`), input => input.value);
+    const values = () => ({
+      entities: selected("destination"), summary: controls.summary.value,
+      start: controls.start.value, end: controls.end.value, allDay: controls.allDay.checked,
+      location: controls.location.value, description: controls.description.value,
+      recurrence: controls.recurrence.value, interval: Number(controls.interval.value),
+      weekdays: selected("weekday").map(Number), until: controls.until.value,
+      schoolYear: controls.schoolYear.checked, holidayCalendar: controls.holidayCalendar.value,
+      excludeCalendars: selected("exclusion")
+    });
+    const updateVisibility = () => {
+      const repeating = controls.recurrence.value !== "none";
+      dialog.querySelector("[data-repeat-settings]").hidden = !repeating;
+      dialog.querySelector("[data-interval-label]").textContent = controls.recurrence.value === "weekly"
+        ? text("Repeat every N weeks", "Повторять каждые N недель")
+        : text("Repeat every N days", "Повторять каждые N дней");
+      dialog.querySelector("[data-weekdays]").hidden = controls.recurrence.value !== "weekly";
+      dialog.querySelector("[data-until]").hidden = controls.schoolYear.checked;
+      dialog.querySelector("[data-school-year]").hidden = !controls.schoolYear.checked;
+      dialog.querySelector("[data-end-hint]").hidden = !controls.allDay.checked;
+      controls.until.required = repeating && !controls.schoolYear.checked;
+      controls.holidayCalendar.required = repeating && controls.schoolYear.checked;
+      controls.interval.required = repeating;
+      dialog.querySelector("[data-delete-template]").disabled = busy || completed.size > 0 || !controls.template.value.startsWith("saved:");
+    };
+    const invalidate = () => {
+      if (busy || completed.size) return;
+      plan = null;
+      preview.hidden = true;
+      progress.textContent = "";
+      submit.textContent = text("Create", "Создать");
+      submit.disabled = false;
+    };
+    form.addEventListener("input", event => {
+      if (["templateName", "template"].includes(event.target.name)) return;
+      invalidate();
+      updateVisibility();
+    });
+    form.addEventListener("change", event => {
+      if (["templateName", "template"].includes(event.target.name)) return;
+      invalidate();
+      updateVisibility();
+    });
+    const setBusy = active => {
+      busy = active;
+      if (active) dialog.dataset.saving = "true";
+      else delete dialog.dataset.saving;
+      Array.from(controls).forEach(control => { control.disabled = active || completed.size > 0; });
+      if (!active) {
+        submit.disabled = false;
+        dialog.querySelector("[data-cancel]").disabled = false;
+        updateVisibility();
+      }
+    };
+    const refresh = () => {
+      this._reloadAfterLoad = true;
+      if (!this._loadInFlight) {
+        this._reloadAfterLoad = false;
+        this.loadEvents(true);
+      }
+    };
     const close = () => {
+      if (busy) return;
       dialog.close();
       dialog.remove();
       this.querySelector('[data-action="add"]')?.focus();
     };
     dialog.querySelector("[data-cancel]").onclick = close;
-    dialog.addEventListener("cancel", event => {
-      event.preventDefault();
-      if (!dialog.dataset.saving) close();
-    });
+    dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
     controls.allDay.onchange = () => {
       const allDay = controls.allDay.checked;
       for (const name of ["start", "end"]) {
@@ -764,38 +1021,155 @@ class OutlookCalendarCard extends HTMLElement {
         nextDay.setDate(nextDay.getDate() + 1);
         controls.end.value = this._localDateValue(nextDay, true);
       }
-      dialog.querySelector("[data-end-hint]").hidden = !allDay;
+      invalidate();
+      updateVisibility();
+    };
+    const renderPreview = () => {
+      const date = value => value.toLocaleString(undefined, controls.allDay.checked ? { dateStyle: "medium" } : { dateStyle: "medium", timeStyle: "short" });
+      preview.innerHTML = `<strong>${text("Dates", "Дат")}: ${plan.accepted.length}; ${text("calendars", "календарей")}: ${plan.entities.length}; ${text("events to create", "записей к созданию")}: ${plan.tasks.length}</strong>
+        <div>${text("Skipped dates", "Пропущено дат")}: ${plan.skipped.length}</div>
+        ${plan.summer ? `<div>${text("Summer holidays start", "Начало летних каникул")}: ${escape(this._localDateValue(plan.summer.start, true))} — ${escape(plan.summer.summary)}</div>` : ""}
+        <details><summary>${text("Show dates", "Показать даты")}</summary><div style="max-height:200px;overflow:auto;">
+        ${plan.accepted.map(item => `<div>${escape(date(item.start))} → ${escape(date(item.end))}</div>`).join("")}
+        ${plan.skipped.map(item => `<div>${escape(date(item.start))} — ${text("skipped", "пропущено")}: ${escape(item.reasons.map(reason => `${this._calendarName(reason.entity)}: ${reason.summary}`).join("; "))}</div>`).join("")}
+        </div></details>`;
+      preview.hidden = false;
+      submit.disabled = !plan.tasks.length;
+      submit.textContent = `${text("Create", "Создать")} (${plan.tasks.length})`;
+    };
+    const prepare = async () => {
+      if (!form.reportValidity()) return false;
+      plan = null;
+      preview.hidden = true;
+      plan = await this._planEventSeries(values());
+      renderPreview();
+      return true;
+    };
+    dialog.querySelector("[data-plan]").onclick = async () => {
+      if (busy || completed.size || !form.reportValidity()) return;
+      error.hidden = true;
+      setBusy(true);
+      try { await prepare(); }
+      catch (err) { error.textContent = err?.message || String(err); error.hidden = false; }
+      finally { setBusy(false); if (plan) submit.disabled = !plan.tasks.length; }
     };
     form.onsubmit = async event => {
       event.preventDefault();
-      if (dialog.dataset.saving || !form.reportValidity()) return;
-      const error = dialog.querySelector("[data-error]");
+      if (busy || (!completed.size && !form.reportValidity())) return;
       error.hidden = true;
+      const input = values();
+      const needsPreview = input.entities.length > 1 || input.recurrence !== "none" || input.excludeCalendars.length > 0;
+      setBusy(true);
       try {
-        const data = this._eventServiceData({
-          entity: controls.entity.value, summary: controls.summary.value,
-          start: controls.start.value, end: controls.end.value,
-          allDay: controls.allDay.checked,
-          location: controls.location.value, description: controls.description.value
+        if (!plan) {
+          if (!await prepare()) return;
+          if (needsPreview) return;
+        }
+        if (!plan.tasks.length) return;
+        await this._writeEventPlan(plan, completed, (done, total) => {
+          progress.textContent = `${text("Created", "Создано")}: ${done} / ${total}`;
         });
-        dialog.dataset.saving = "true";
-        Array.from(controls).forEach(control => { control.disabled = true; });
-        await (this._hass || window.hass).callService("calendar", "create_event", data);
+        setBusy(false);
+        close();
+        refresh();
       } catch (err) {
-        error.textContent = err?.message || String(err);
+        error.textContent = completed.size
+          ? `${text("Created", "Создано")}: ${completed.size} / ${plan.tasks.length}. ${err?.message || String(err)}. ${text("Retry sends only remaining events. If a request timed out, check that event in the calendar before retrying.", "Повтор отправит только оставшиеся события. При тайм-ауте проверьте соответствующее событие в календаре перед повтором.")}`
+          : err?.message || String(err);
         error.hidden = false;
-        delete dialog.dataset.saving;
-        Array.from(controls).forEach(control => { control.disabled = false; });
-        return;
-      }
-      close();
-      // If an earlier fetch is still in progress, queue a fresh fetch after it.
-      this._reloadAfterLoad = true;
-      if (!this._loadInFlight) {
-        this._reloadAfterLoad = false;
-        this.loadEvents(true);
+        if (completed.size) {
+          submit.textContent = text("Retry remaining", "Повторить оставшиеся");
+          refresh();
+        }
+      } finally {
+        setBusy(false);
+        if (plan && !completed.size) submit.disabled = !plan.tasks.length;
       }
     };
+    const populateTemplates = () => {
+      controls.template.querySelectorAll('[data-saved]').forEach(option => option.remove());
+      templates.forEach((template, index) => {
+        const option = document.createElement("option");
+        option.value = `saved:${index}`;
+        option.dataset.saved = "true";
+        option.textContent = template.name;
+        controls.template.appendChild(option);
+      });
+    };
+    const applyTemplate = template => {
+      const settings = template.values;
+      for (const [name, items] of [["destination", settings.entities || []], ["exclusion", settings.excludeCalendars || []], ["weekday", (settings.weekdays || []).map(String)]]) {
+        form.querySelectorAll(`input[name="${name}"]`).forEach(input => { input.checked = items.includes(input.value); });
+      }
+      for (const name of ["summary", "description", "location", "recurrence", "interval", "holidayCalendar"]) {
+        if (settings[name] !== undefined) controls[name].value = settings[name];
+      }
+      controls.schoolYear.checked = !!settings.schoolYear;
+      if (settings.allDay !== undefined) {
+        controls.allDay.checked = !!settings.allDay;
+        const day = controls.start.value.slice(0, 10);
+        const templateStart = new Date(`${day}T${settings.startTime || "09:00"}`);
+        const templateEnd = new Date(`${day}T${settings.endTime || "10:00"}`);
+        templateEnd.setDate(templateEnd.getDate() + Number(settings.endDayOffset || 0));
+        for (const [name, value] of [["start", templateStart], ["end", templateEnd]]) {
+          controls[name].type = settings.allDay ? "date" : "datetime-local";
+          controls[name].value = this._localDateValue(value, !!settings.allDay);
+        }
+      }
+      if (settings.untilDays !== undefined) {
+        const until = new Date(`${controls.start.value.slice(0, 10)}T12:00:00`);
+        until.setDate(until.getDate() + Number(settings.untilDays));
+        controls.until.value = this._localDateValue(until, true);
+      }
+      dialog.querySelector("[data-exclusions]").open = selected("exclusion").length > 0;
+      invalidate();
+      updateVisibility();
+    };
+    controls.template.onchange = () => {
+      if (controls.template.value === "school") {
+        const holiday = allCalendars.find(entity => /каникул|holiday|vacances|ferien/i.test(this._calendarName(entity) + " " + entity)) || "";
+        const exclusions = allCalendars.filter(entity => /каникул|праздник|holiday|vacances|férié|ferien/i.test(this._calendarName(entity) + " " + entity));
+        applyTemplate({ values: { recurrence: "weekly", interval: 1, weekdays: [new Date(`${controls.start.value.slice(0, 10)}T12:00:00`).getDay()], schoolYear: true, holidayCalendar: holiday, excludeCalendars: exclusions, entities: selected("destination") } });
+      } else if (controls.template.value.startsWith("saved:")) {
+        const template = templates[Number(controls.template.value.slice(6))];
+        if (template) { applyTemplate(template); controls.templateName.value = template.name; }
+      }
+      updateVisibility();
+    };
+    const persistTemplates = () => localStorage.setItem(this._eventTemplateStorageKey(), JSON.stringify(templates));
+    dialog.querySelector("[data-save-template]").onclick = () => {
+      error.hidden = true;
+      const name = controls.templateName.value.trim();
+      if (!name) { error.textContent = text("Enter a template name.", "Введите название шаблона."); error.hidden = false; return; }
+      const settings = values();
+      const from = new Date(`${settings.start.slice(0, 10)}T12:00:00`);
+      const to = new Date(`${settings.end.slice(0, 10)}T12:00:00`);
+      if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) return;
+      const template = { name, values: { ...settings, startTime: settings.start.slice(11) || "00:00", endTime: settings.end.slice(11) || "00:00", endDayOffset: this._dateOrdinal(to) - this._dateOrdinal(from), untilDays: Math.max(0, this._dateOrdinal(new Date(`${settings.until}T12:00:00`)) - this._dateOrdinal(from)) } };
+      delete template.values.start;
+      delete template.values.end;
+      delete template.values.until;
+      const previous = templates.slice();
+      const index = templates.findIndex(item => item.name === name);
+      if (index >= 0) templates[index] = template;
+      else templates.push(template);
+      try {
+        persistTemplates();
+        populateTemplates();
+        controls.template.value = `saved:${index >= 0 ? index : templates.length - 1}`;
+        progress.textContent = text("Template saved.", "Шаблон сохранён.");
+        updateVisibility();
+      } catch (err) { templates = previous; error.textContent = text("Could not save the template in this browser.", "Не удалось сохранить шаблон в этом браузере."); error.hidden = false; }
+    };
+    dialog.querySelector("[data-delete-template]").onclick = () => {
+      if (!controls.template.value.startsWith("saved:")) return;
+      const previous = templates.slice();
+      templates.splice(Number(controls.template.value.slice(6)), 1);
+      try { persistTemplates(); populateTemplates(); controls.template.value = ""; updateVisibility(); }
+      catch (err) { templates = previous; error.textContent = text("Could not delete the template.", "Не удалось удалить шаблон."); error.hidden = false; }
+    };
+    populateTemplates();
+    updateVisibility();
     this.appendChild(dialog);
     dialog.showModal();
   }
@@ -972,17 +1346,15 @@ class OutlookCalendarCard extends HTMLElement {
 
   _parseEventTimes(event) {
     if (!event || !event.start || !event.end) return null;
-    if (event.start.date && event.end.date) {
-      const start = new Date(`${event.start.date}T00:00:00`);
-      const end = new Date(`${event.end.date}T00:00:00`);
-      return { start, end, allDay: true };
-    }
-    if (event.start.dateTime && event.end.dateTime) {
-      const start = new Date(event.start.dateTime);
-      const end = new Date(event.end.dateTime);
-      return { start, end, allDay: false };
-    }
-    return null;
+    const startValue = typeof event.start === "string" ? event.start : event.start.date || event.start.dateTime;
+    const endValue = typeof event.end === "string" ? event.end : event.end.date || event.end.dateTime;
+    if (typeof startValue !== "string" || typeof endValue !== "string") return null;
+    const allDay = /^\d{4}-\d{2}-\d{2}$/.test(startValue) && /^\d{4}-\d{2}-\d{2}$/.test(endValue);
+    return {
+      start: new Date(allDay ? `${startValue}T00:00:00` : startValue),
+      end: new Date(allDay ? `${endValue}T00:00:00` : endValue),
+      allDay
+    };
   }
 
   renderNowLine(start, end) {
