@@ -6,6 +6,21 @@ A Home Assistant calendar card with day, week, two-week and month views.
 
 ## Installation
 
+### Marketplace / HACS
+
+[Open this repository in Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin), or add `https://github.com/dmitry-pervushin/ha-calendar-card` as a custom repository with type **Dashboard** (`plugin`). In older HACS versions, use **Custom repositories → Dashboard**. Install the card and reload the browser. The repository must be public; preparing it does not automatically include it in the shared catalog.
+
+Marketplace normally adds the JavaScript resource automatically. With YAML-managed resources, add it yourself if necessary:
+
+```yaml
+url: /local/community/ha-calendar-card/outlook-calendar-card.js
+type: module
+```
+
+When migrating from a manual installation, remove the old `/local/outlook-calendar-card.js` resource entry so the card is loaded only once.
+
+### Manual installation
+
 Copy `outlook-calendar-card.js` to Home Assistant’s `/config/www/` directory and add a dashboard resource of type **JavaScript module**:
 
 ```text

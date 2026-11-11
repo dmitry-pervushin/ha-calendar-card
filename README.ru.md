@@ -6,6 +6,21 @@
 
 ## Установка
 
+### Marketplace / HACS
+
+[Откройте репозиторий в Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin) или добавьте `https://github.com/dmitry-pervushin/ha-calendar-card` как пользовательский репозиторий типа **Dashboard** (`plugin`). В старых версиях HACS используйте **Custom repositories → Dashboard**. Установите карточку и перезагрузите браузер. Репозиторий должен быть публичным; подготовка не добавляет его автоматически в общий каталог.
+
+Marketplace обычно добавляет JavaScript-ресурс автоматически. При управлении ресурсами через YAML добавьте его вручную, если необходимо:
+
+```yaml
+url: /local/community/ha-calendar-card/outlook-calendar-card.js
+type: module
+```
+
+При переходе с ручной установки удалите старую запись ресурса `/local/outlook-calendar-card.js`, чтобы карточка загружалась только один раз.
+
+### Ручная установка
+
 Скопируйте `outlook-calendar-card.js` в `/config/www/` Home Assistant и добавьте ресурс панели типа **JavaScript module**:
 
 ```text
