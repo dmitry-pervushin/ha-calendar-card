@@ -1,3 +1,327 @@
+const CARD_TRANSLATIONS = {
+  "en": {
+    "add_event": "Add event",
+    "error_edit_unsupported": "This calendar does not support editing events.",
+    "error_create_unsupported": "This calendar does not support adding events.",
+    "error_title_required": "Enter an event title.",
+    "error_icon_name": "Use an MDI icon name, for example mdi:tennis-ball.",
+    "error_end_before_start": "End must be after start.",
+    "calendar_unavailable": "Calendar unavailable",
+    "error_read_events": "Could not read calendar events.",
+    "error_calendar_dates": "Invalid event dates in calendar",
+    "error_calendar_required": "Select at least one calendar.",
+    "error_repeat_rule": "Invalid repeat rule.",
+    "error_repeat_interval": "Repeat interval must be between 1 and 52.",
+    "error_weekdays_required": "Select days of the week.",
+    "error_summer_not_found": "No summer holiday event found. Select another calendar or set an end date.",
+    "error_repeat_end_required": "Set a repeat end date.",
+    "error_repeat_horizon": "Choose an end date after the start, within two years.",
+    "error_series_limit": "Limit the series to 366 dates or fewer.",
+    "error_no_dates": "No dates match this repeat rule.",
+    "calendar_no_longer_writable": "Calendar is no longer writable",
+    "open_event": "Open event",
+    "error_edit_unavailable": "This calendar does not support editing or is unavailable.",
+    "error_event_id_missing": "The calendar did not provide an event ID for editing.",
+    "error_occurrence_id_missing": "The calendar did not identify this occurrence. Edit the series in its calendar app.",
+    "error_update_api_unavailable": "The calendar update API is unavailable.",
+    "weekday_mon": "Mon",
+    "weekday_tue": "Tue",
+    "weekday_wed": "Wed",
+    "weekday_thu": "Thu",
+    "weekday_fri": "Fri",
+    "weekday_sat": "Sat",
+    "weekday_sun": "Sun",
+    "edit_event": "Edit event",
+    "event_calendar": "Event in calendar",
+    "edit_scope_hint": "Only the selected calendar entry and date are changed.",
+    "template": "Template",
+    "custom_settings": "Custom settings",
+    "school_activity": "School activity",
+    "save_template_settings": "Save these settings as a template",
+    "template_name": "Template name",
+    "save": "Save",
+    "delete": "Delete",
+    "template_storage_hint": "Templates are saved in this browser for your Home Assistant user.",
+    "add_to_calendars": "Add to calendars",
+    "title": "Title",
+    "event_icon": "Event icon (optional)",
+    "icon_theatre": "Theatre",
+    "icon_music": "Music",
+    "icon_tennis": "Tennis",
+    "icon_sailing": "Sailing",
+    "icon_football": "Football",
+    "icon_running": "Running",
+    "icon_cat": "Cat",
+    "icon_dog": "Dog",
+    "icon_school_meeting": "School meeting",
+    "icon_none": "None",
+    "icon_unicode_hint": "Known icons become Unicode in the title, e.g. 🎾 Tennis. A leading emoji selects its MDI icon. Other icons use [mdi:icon-name].",
+    "all_day": "All day",
+    "start": "Start",
+    "end": "End",
+    "all_day_end_hint": "For all-day events, end is the day after the last event day.",
+    "repeat": "Repeat",
+    "repeat_none": "Does not repeat",
+    "repeat_weekly": "Weekly",
+    "repeat_daily": "Daily",
+    "weekdays": "Days of the week",
+    "school_year_end": "Until the end of the school year",
+    "repeat_until": "Repeat through (inclusive)",
+    "holiday_calendar": "School holiday calendar",
+    "select_calendar": "Select a calendar",
+    "school_year_hint": "Stops before the first event starting in June, July or August of this school year.",
+    "skip_days": "Skip days with events in other calendars",
+    "skip_days_hint": "Skip a whole day if any of these calendars has an event",
+    "location": "Location",
+    "description": "Description",
+    "series_conditions_hint": "Repeats are created as separate events. Holiday conditions are checked when preparing the series; later calendar changes do not update created events.",
+    "cancel": "Cancel",
+    "preview": "Preview",
+    "create": "Create",
+    "repeat_interval_weeks": "Repeat every N weeks",
+    "repeat_interval_days": "Repeat every N days",
+    "save_changes": "Save changes",
+    "dates": "Dates",
+    "calendars": "calendars",
+    "events_to_create": "events to create",
+    "skipped_dates": "Skipped dates",
+    "summer_starts": "Summer holidays start",
+    "show_dates": "Show dates",
+    "skipped": "skipped",
+    "created": "Created",
+    "retry_hint": "Retry sends only remaining events. If a request timed out, check that event in the calendar before retrying.",
+    "retry_remaining": "Retry remaining",
+    "error_template_name_required": "Enter a template name.",
+    "template_saved": "Template saved.",
+    "error_template_save": "Could not save the template in this browser.",
+    "error_template_delete": "Could not delete the template.",
+    "today": "Today",
+    "day": "Day",
+    "week": "Week",
+    "month": "Month",
+    "previous": "Previous",
+    "next": "Next",
+    "error_load_events": "Failed to load calendar events",
+    "no_events": "No events",
+    "card_name": "Outlook style calendar",
+    "card_description": "Time grid calendar with events like Outlook"
+  },
+  "ru": {
+    "add_event": "Добавить событие",
+    "error_edit_unsupported": "Этот календарь не поддерживает редактирование событий.",
+    "error_create_unsupported": "Этот календарь не поддерживает добавление событий.",
+    "error_title_required": "Введите название события.",
+    "error_icon_name": "Укажите имя MDI-иконки, например mdi:tennis-ball.",
+    "error_end_before_start": "Окончание должно быть позже начала.",
+    "calendar_unavailable": "Календарь недоступен",
+    "error_read_events": "Не удалось прочитать события календаря.",
+    "error_calendar_dates": "Некорректные даты события в календаре",
+    "error_calendar_required": "Выберите хотя бы один календарь.",
+    "error_repeat_rule": "Некорректное правило повторения.",
+    "error_repeat_interval": "Интервал повторения должен быть от 1 до 52.",
+    "error_weekdays_required": "Выберите дни недели.",
+    "error_summer_not_found": "Летние каникулы не найдены. Выберите другой календарь или укажите дату окончания.",
+    "error_repeat_end_required": "Укажите дату окончания повторений.",
+    "error_repeat_horizon": "Выберите окончание не раньше начала и не более чем через два года.",
+    "error_series_limit": "Сократите серию до 366 дат или меньше.",
+    "error_no_dates": "Нет дат, подходящих под правило повторения.",
+    "calendar_no_longer_writable": "Запись в календарь больше недоступна",
+    "open_event": "Открыть событие",
+    "error_edit_unavailable": "Календарь не поддерживает редактирование или недоступен.",
+    "error_event_id_missing": "Календарь не передал идентификатор события для редактирования.",
+    "error_occurrence_id_missing": "Календарь не указал идентификатор повторения. Измените серию в приложении календаря.",
+    "error_update_api_unavailable": "API изменения событий недоступен.",
+    "weekday_mon": "Пн",
+    "weekday_tue": "Вт",
+    "weekday_wed": "Ср",
+    "weekday_thu": "Чт",
+    "weekday_fri": "Пт",
+    "weekday_sat": "Сб",
+    "weekday_sun": "Вс",
+    "edit_event": "Редактировать событие",
+    "event_calendar": "Событие в календаре",
+    "edit_scope_hint": "Изменяется только эта дата и запись в выбранном календаре.",
+    "template": "Шаблон",
+    "custom_settings": "Свои настройки",
+    "school_activity": "Учебное занятие",
+    "save_template_settings": "Сохранить настройки как шаблон",
+    "template_name": "Название шаблона",
+    "save": "Сохранить",
+    "delete": "Удалить",
+    "template_storage_hint": "Шаблоны сохраняются в этом браузере для вашего пользователя Home Assistant.",
+    "add_to_calendars": "Добавить в календари",
+    "title": "Название",
+    "event_icon": "Иконка события (необязательно)",
+    "icon_theatre": "Театр",
+    "icon_music": "Музыка",
+    "icon_tennis": "Теннис",
+    "icon_sailing": "Парусный спорт",
+    "icon_football": "Футбол",
+    "icon_running": "Бег",
+    "icon_cat": "Кошка",
+    "icon_dog": "Собака",
+    "icon_school_meeting": "Собрание в школе",
+    "icon_none": "Без иконки",
+    "icon_unicode_hint": "Знакомые иконки сохраняются символами: 🎾 Теннис. Символ в начале названия выбирает MDI-иконку. Для остальных используется [mdi:имя-иконки].",
+    "all_day": "Весь день",
+    "start": "Начало",
+    "end": "Окончание",
+    "all_day_end_hint": "Для событий на весь день окончание — день после последнего дня события.",
+    "repeat": "Повторение",
+    "repeat_none": "Не повторять",
+    "repeat_weekly": "По неделям",
+    "repeat_daily": "По дням",
+    "weekdays": "Дни недели",
+    "school_year_end": "До конца учебного года",
+    "repeat_until": "Повторять по дату включительно",
+    "holiday_calendar": "Календарь каникул",
+    "select_calendar": "Выберите календарь",
+    "school_year_hint": "До первого события, начинающегося в июне, июле или августе этого учебного года.",
+    "skip_days": "Если не каникулы / не праздник",
+    "skip_days_hint": "Пропускать весь день, если есть событие в любом из календарей",
+    "location": "Место",
+    "description": "Описание",
+    "series_conditions_hint": "Повторения создаются отдельными событиями. Условия проверяются при подготовке серии; последующие изменения календарей не изменяют созданные события.",
+    "cancel": "Отмена",
+    "preview": "Предпросмотр",
+    "create": "Создать",
+    "repeat_interval_weeks": "Повторять каждые N недель",
+    "repeat_interval_days": "Повторять каждые N дней",
+    "save_changes": "Сохранить изменения",
+    "dates": "Дат",
+    "calendars": "календарей",
+    "events_to_create": "записей к созданию",
+    "skipped_dates": "Пропущено дат",
+    "summer_starts": "Начало летних каникул",
+    "show_dates": "Показать даты",
+    "skipped": "пропущено",
+    "created": "Создано",
+    "retry_hint": "Повтор отправит только оставшиеся события. При тайм-ауте проверьте соответствующее событие в календаре перед повтором.",
+    "retry_remaining": "Повторить оставшиеся",
+    "error_template_name_required": "Введите название шаблона.",
+    "template_saved": "Шаблон сохранён.",
+    "error_template_save": "Не удалось сохранить шаблон в этом браузере.",
+    "error_template_delete": "Не удалось удалить шаблон.",
+    "today": "Сегодня",
+    "day": "День",
+    "week": "Неделя",
+    "month": "Месяц",
+    "previous": "Назад",
+    "next": "Вперёд",
+    "error_load_events": "Не удалось загрузить события календаря",
+    "no_events": "Нет событий",
+    "card_name": "Календарь в стиле Outlook",
+    "card_description": "Календарь с временной сеткой в стиле Outlook"
+  },
+  "fr": {
+    "add_event": "Ajouter un événement",
+    "error_edit_unsupported": "Ce calendrier ne permet pas de modifier les événements.",
+    "error_create_unsupported": "Ce calendrier ne permet pas d’ajouter des événements.",
+    "error_title_required": "Saisissez un titre pour l’événement.",
+    "error_icon_name": "Indiquez un nom d’icône MDI, par exemple mdi:tennis-ball.",
+    "error_end_before_start": "La fin doit être postérieure au début.",
+    "calendar_unavailable": "Calendrier indisponible",
+    "error_read_events": "Impossible de lire les événements du calendrier.",
+    "error_calendar_dates": "Dates d’événement incorrectes dans le calendrier",
+    "error_calendar_required": "Sélectionnez au moins un calendrier.",
+    "error_repeat_rule": "Règle de répétition incorrecte.",
+    "error_repeat_interval": "L’intervalle de répétition doit être compris entre 1 et 52.",
+    "error_weekdays_required": "Sélectionnez les jours de la semaine.",
+    "error_summer_not_found": "Aucune période de vacances d’été trouvée. Sélectionnez un autre calendrier ou indiquez une date de fin.",
+    "error_repeat_end_required": "Indiquez une date de fin des répétitions.",
+    "error_repeat_horizon": "Choisissez une date de fin au plus tôt le jour du début et dans les deux ans.",
+    "error_series_limit": "Limitez la série à 366 dates au maximum.",
+    "error_no_dates": "Aucune date ne correspond à cette règle de répétition.",
+    "calendar_no_longer_writable": "L’écriture dans ce calendrier n’est plus disponible",
+    "open_event": "Ouvrir l’événement",
+    "error_edit_unavailable": "Ce calendrier ne permet pas la modification ou est indisponible.",
+    "error_event_id_missing": "Le calendrier n’a pas fourni d’identifiant permettant de modifier cet événement.",
+    "error_occurrence_id_missing": "Le calendrier n’a pas identifié cette occurrence. Modifiez la série dans son application de calendrier.",
+    "error_update_api_unavailable": "L’API de modification des événements est indisponible.",
+    "weekday_mon": "Lun",
+    "weekday_tue": "Mar",
+    "weekday_wed": "Mer",
+    "weekday_thu": "Jeu",
+    "weekday_fri": "Ven",
+    "weekday_sat": "Sam",
+    "weekday_sun": "Dim",
+    "edit_event": "Modifier l’événement",
+    "event_calendar": "Événement du calendrier",
+    "edit_scope_hint": "Seules cette date et l’entrée du calendrier sélectionné seront modifiées.",
+    "template": "Modèle",
+    "custom_settings": "Paramètres personnalisés",
+    "school_activity": "Activité scolaire",
+    "save_template_settings": "Enregistrer ces paramètres comme modèle",
+    "template_name": "Nom du modèle",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "template_storage_hint": "Les modèles sont enregistrés dans ce navigateur pour votre compte Home Assistant.",
+    "add_to_calendars": "Ajouter aux calendriers",
+    "title": "Titre",
+    "event_icon": "Icône de l’événement (facultative)",
+    "icon_theatre": "Théâtre",
+    "icon_music": "Musique",
+    "icon_tennis": "Tennis",
+    "icon_sailing": "Voile",
+    "icon_football": "Football",
+    "icon_running": "Course à pied",
+    "icon_cat": "Chat",
+    "icon_dog": "Chien",
+    "icon_school_meeting": "Réunion à l’école",
+    "icon_none": "Sans icône",
+    "icon_unicode_hint": "Les icônes reconnues deviennent des caractères Unicode dans le titre, par exemple 🎾 Tennis. Un emoji initial sélectionne son icône MDI. Les autres utilisent [mdi:nom-icone].",
+    "all_day": "Toute la journée",
+    "start": "Début",
+    "end": "Fin",
+    "all_day_end_hint": "Pour un événement sur toute la journée, la fin est le lendemain du dernier jour de l’événement.",
+    "repeat": "Répétition",
+    "repeat_none": "Ne pas répéter",
+    "repeat_weekly": "Chaque semaine",
+    "repeat_daily": "Chaque jour",
+    "weekdays": "Jours de la semaine",
+    "school_year_end": "Jusqu’à la fin de l’année scolaire",
+    "repeat_until": "Répéter jusqu’au (inclus)",
+    "holiday_calendar": "Calendrier des vacances scolaires",
+    "select_calendar": "Sélectionnez un calendrier",
+    "school_year_hint": "S’arrête avant le premier événement commençant en juin, juillet ou août de cette année scolaire.",
+    "skip_days": "Sauf pendant les vacances ou les jours fériés",
+    "skip_days_hint": "Ignorer toute la journée si l’un de ces calendriers contient un événement",
+    "location": "Lieu",
+    "description": "Description",
+    "series_conditions_hint": "Les répétitions sont créées comme des événements distincts. Les conditions sont vérifiées lors de la préparation de la série ; les modifications ultérieures des calendriers ne mettent pas à jour les événements créés.",
+    "cancel": "Annuler",
+    "preview": "Aperçu",
+    "create": "Créer",
+    "repeat_interval_weeks": "Répéter toutes les N semaines",
+    "repeat_interval_days": "Répéter tous les N jours",
+    "save_changes": "Enregistrer les modifications",
+    "dates": "Dates",
+    "calendars": "calendriers",
+    "events_to_create": "événements à créer",
+    "skipped_dates": "Dates ignorées",
+    "summer_starts": "Début des vacances d’été",
+    "show_dates": "Afficher les dates",
+    "skipped": "ignoré",
+    "created": "Créés",
+    "retry_hint": "La nouvelle tentative n’envoie que les événements restants. Si une requête a expiré, vérifiez cet événement dans le calendrier avant de réessayer.",
+    "retry_remaining": "Réessayer les événements restants",
+    "error_template_name_required": "Saisissez un nom pour le modèle.",
+    "template_saved": "Modèle enregistré.",
+    "error_template_save": "Impossible d’enregistrer le modèle dans ce navigateur.",
+    "error_template_delete": "Impossible de supprimer le modèle.",
+    "today": "Aujourd’hui",
+    "day": "Jour",
+    "week": "Semaine",
+    "month": "Mois",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "error_load_events": "Impossible de charger les événements du calendrier",
+    "no_events": "Aucun événement",
+    "card_name": "Calendrier de style Outlook",
+    "card_description": "Calendrier avec grille horaire de style Outlook"
+  }
+};
+
 const EVENT_ICON_UNICODE = Object.freeze({
   "mdi:drama-masks": "🎭",
   "mdi:sail-boat": "⛵",
@@ -51,12 +375,24 @@ class OutlookCalendarCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    const languageKey = this._languageSettingsKey();
+    const languageChanged = this._lastLanguageSettingsKey !== languageKey;
+    this._lastLanguageSettingsKey = languageKey;
     if (this._config) {
       const calendars = this._normalizeCalendars(this._config);
       if (this._loadInFlight && JSON.stringify(calendars) !== JSON.stringify(this._calendars)) {
         this._reloadAfterLoad = true;
       }
       this._calendars = calendars;
+    }
+    if (languageChanged && this._config) {
+      this.render();
+      this._refreshDialogLanguage?.();
+      const registration = window.customCards?.find(card => card.type === "outlook-calendar-card");
+      if (registration) {
+        registration.name = this._text("card_name");
+        registration.description = this._text("card_description");
+      }
     }
     this._scheduleLoad(false);
   }
@@ -104,7 +440,7 @@ class OutlookCalendarCard extends HTMLElement {
   }
 
   _formatDateLabel(date) {
-    return date.toLocaleDateString(undefined, {
+    return date.toLocaleDateString(this._locale(), {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -112,56 +448,18 @@ class OutlookCalendarCard extends HTMLElement {
     });
   }
 
-  _localizeFirst(keys, fallback) {
-    const hass = this._hass || window.hass;
-    if (hass && typeof hass.localize === "function") {
-      for (const key of keys) {
-        const value = hass.localize(key);
-        if (value && value !== key) {
-          return value;
-        }
-      }
-    }
-    return fallback;
-  }
-
-  _labelToday() {
-    return this._localizeFirst(["ui.common.today"], "Today");
-  }
-
-  _labelDay() {
-    return this._localizeFirst(
-      ["ui.panel.calendar.day", "ui.common.day"],
-      "Day"
-    );
-  }
-
-  _labelWeek() {
-    return this._localizeFirst(
-      ["ui.panel.calendar.week", "ui.common.week"],
-      "Week"
-    );
-  }
-
-  _labelMonth() {
-    return this._localizeFirst(
-      ["ui.panel.calendar.month", "ui.common.month"],
-      "Month"
-    );
-  }
-
-  _labelPrevious() {
-    return this._localizeFirst(["ui.common.previous"], "Previous");
-  }
-
-  _labelNext() {
-    return this._localizeFirst(["ui.common.next"], "Next");
-  }
+  _labelToday() { return this._text("today"); }
+  _labelDay() { return this._text("day"); }
+  _labelWeek() { return this._text("week"); }
+  _labelMonth() { return this._text("month"); }
+  _labelPrevious() { return this._text("previous"); }
+  _labelNext() { return this._text("next"); }
 
   _formatTimeLabel(date) {
-    return date.toLocaleTimeString(undefined, {
+    return date.toLocaleTimeString(this._locale(), {
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
+      ...this._timeFormatOptions()
     });
   }
 
@@ -219,7 +517,7 @@ class OutlookCalendarCard extends HTMLElement {
     const view = this._getView();
     if (view === "month") {
       const base = this._getActiveDate();
-      return base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      return base.toLocaleDateString(this._locale(), { month: "long", year: "numeric" });
     }
     if (view === "week") {
       const { start, end } = this._getViewRange();
@@ -664,7 +962,7 @@ class OutlookCalendarCard extends HTMLElement {
     const labelMonth = this._labelMonth();
     const labelPrev = this._labelPrevious();
     const labelNext = this._labelNext();
-    o += `<ha-card>`;
+    o += `<ha-card lang="${this._locale()}">`;
     o += `<div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--divider-color);">`;
     o += `<button type="button" data-action="prev" aria-label="${this._escapeHtml(labelPrev)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">◀</button>`;
     o += `<button type="button" data-action="today" aria-label="${this._escapeHtml(labelToday)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelToday)}</button>`;
@@ -675,18 +973,18 @@ class OutlookCalendarCard extends HTMLElement {
     o += `<button type="button" data-view="week" aria-label="${this._escapeHtml(labelWeek)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelWeek)}</button>`;
     o += `<button type="button" data-view="month" aria-label="${this._escapeHtml(labelMonth)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelMonth)}</button>`;
     o += `</div>`;
-    const addLabel = this._text("Add event", "Добавить событие");
+    const addLabel = this._text("add_event");
     o += `<button type="button" data-action="add" aria-label="${addLabel}" title="${addLabel}" ${this._writableCalendars().length ? "" : "disabled"} style="background:var(--primary-color);color:var(--text-primary-color, white);border:0;border-radius:6px;padding:4px 8px;cursor:pointer;">+</button>`;
     o += `</div>`;
     const view = this._getView();
     if (view === "day") {
       o += this.renderAllDayEvents(this._events || []);
-      o += `<div style="display:grid;grid-template-columns:56px minmax(0, 1fr);padding:8px 0;">`;
+      o += `<div style="display:grid;grid-template-columns:${this._uses12HourTime() ? 84 : 56}px minmax(0, 1fr);padding:8px 0;">`;
       o += `<div data-time-axis style="position:relative;height:${this._config.height}px;">${this.renderTimeAxis(start, end, step)}</div>`;
       o += `<div data-time-grid style="position:relative;height:${this._config.height}px;border-left:1px solid var(--divider-color);">`;
       o += this.renderGrid(start, end, step);
       if (this._error) {
-        o += `<div style="padding:8px;color:var(--error-color);font-size:12px;">Failed to load calendar events</div>`;
+        o += `<div style="padding:8px;color:var(--error-color);font-size:12px;">${this._text("error_load_events")}</div>`;
       } else {
         o += this.renderEvents(this._events || [], start, end);
       }
@@ -739,9 +1037,64 @@ class OutlookCalendarCard extends HTMLElement {
     });
   }
 
-  _text(english, russian) {
+  _locale() {
     const hass = this._hass || window.hass;
-    return (hass?.locale?.language || hass?.language || "").startsWith("ru") ? russian : english;
+    try {
+      const locale = Intl.getCanonicalLocales((hass?.locale?.language || hass?.language || "en").replaceAll("_", "-"))[0];
+      return Object.hasOwn(CARD_TRANSLATIONS, locale.split("-")[0]) ? locale : "en";
+    } catch {
+      return "en";
+    }
+  }
+
+  _language() {
+    return this._locale().split("-")[0];
+  }
+
+  _languageSettingsKey() {
+    const hass = this._hass || window.hass;
+    return JSON.stringify([this._locale(), hass?.locale?.time_format]);
+  }
+
+  _text(key) {
+    return CARD_TRANSLATIONS[this._language()][key] || CARD_TRANSLATIONS.en[key] || key;
+  }
+
+  _timeFormatOptions() {
+    const format = (this._hass || window.hass)?.locale?.time_format;
+    if (format === "12") return { hour12: true };
+    if (format === "24") return { hour12: false };
+    if (format === "system") return { hour12: new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12 };
+    return {};
+  }
+
+  _uses12HourTime() {
+    return new Intl.DateTimeFormat(this._locale(), { hour: "numeric", ...this._timeFormatOptions() }).resolvedOptions().hour12;
+  }
+
+  _bindDialogTranslations(dialog) {
+    const bindings = [];
+    const translate = value => value.replace(/__HA_CALENDAR_I18N_([a-z_]+)__/g, (_, key) => this._text(key));
+    const nodes = document.createTreeWalker(dialog, NodeFilter.SHOW_TEXT);
+    while (nodes.nextNode()) {
+      const node = nodes.currentNode;
+      if (!node.data.includes("__HA_CALENDAR_I18N_")) continue;
+      const template = node.data;
+      bindings.push(() => { node.data = translate(template); });
+    }
+    dialog.querySelectorAll("*").forEach(element => {
+      for (const attribute of element.attributes) {
+        if (!attribute.value.includes("__HA_CALENDAR_I18N_")) continue;
+        const name = attribute.name, template = attribute.value;
+        bindings.push(() => element.setAttribute(name, translate(template)));
+      }
+    });
+    const refresh = () => {
+      dialog.lang = this._locale();
+      bindings.forEach(binding => binding());
+    };
+    refresh();
+    return refresh;
   }
 
   _writableCalendars(feature = 1) {
@@ -762,21 +1115,21 @@ class OutlookCalendarCard extends HTMLElement {
   _eventServiceData(values, feature = 1) {
     if (!this._writableCalendars(feature).some(calendar => calendar.entity === values.entity)) {
       throw new Error(feature === 4
-        ? this._text("This calendar does not support editing events.", "Этот календарь не поддерживает редактирование событий.")
-        : this._text("This calendar does not support adding events.", "Этот календарь не поддерживает добавление событий."));
+        ? this._text("error_edit_unsupported")
+        : this._text("error_create_unsupported"));
     }
     const title = this._parseEventTitle(values.summary);
     if (!title.summary.trim()) {
-      throw new Error(this._text("Enter an event title.", "Введите название события."));
+      throw new Error(this._text("error_title_required"));
     }
     const eventIcon = (values.eventIcon || title.eventIcon || "").trim();
     if (eventIcon && !/^mdi:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(eventIcon)) {
-      throw new Error(this._text("Use an MDI icon name, for example mdi:tennis-ball.", "Укажите имя MDI-иконки, например mdi:tennis-ball."));
+      throw new Error(this._text("error_icon_name"));
     }
     const start = new Date(values.start);
     const end = new Date(values.end);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
-      throw new Error(this._text("End must be after start.", "Окончание должно быть позже начала."));
+      throw new Error(this._text("error_end_before_start"));
     }
     return {
       entity_id: values.entity,
@@ -806,15 +1159,15 @@ class OutlookCalendarCard extends HTMLElement {
     const hass = this._hass || window.hass;
     const state = hass?.states?.[entity];
     if (!state || ["unknown", "unavailable"].includes(state.state)) {
-      throw new Error(`${this._text("Calendar unavailable", "Календарь недоступен")}: ${this._calendarName(entity)}`);
+      throw new Error(`${this._text("calendar_unavailable")}: ${this._calendarName(entity)}`);
     }
     const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
     const events = await hass.callApi("GET", `calendars/${entity}?${query}`);
-    if (!Array.isArray(events)) throw new Error(this._text("Could not read calendar events.", "Не удалось прочитать события календаря."));
+    if (!Array.isArray(events)) throw new Error(this._text("error_read_events"));
     return events.map(event => {
       const parsed = this._parseEventTimes(event);
       if (!parsed || !Number.isFinite(parsed.start.getTime()) || !Number.isFinite(parsed.end.getTime()) || parsed.end <= parsed.start) {
-        throw new Error(`${this._text("Invalid event dates in calendar", "Некорректные даты события в календаре")}: ${this._calendarName(entity)}`);
+        throw new Error(`${this._text("error_calendar_dates")}: ${this._calendarName(entity)}`);
       }
       return { ...parsed, summary: event.summary || "", entity };
     });
@@ -822,17 +1175,17 @@ class OutlookCalendarCard extends HTMLElement {
 
   async _planEventSeries(values) {
     const entities = [...new Set(values.entities || [])];
-    if (!entities.length) throw new Error(this._text("Select at least one calendar.", "Выберите хотя бы один календарь."));
+    if (!entities.length) throw new Error(this._text("error_calendar_required"));
     for (const entity of entities) this._eventServiceData({ ...values, entity });
     const start = new Date(values.allDay ? `${values.start}T00:00:00` : values.start);
     const end = new Date(values.allDay ? `${values.end}T00:00:00` : values.end);
     const recurrence = values.recurrence || "none";
-    if (!["none", "daily", "weekly"].includes(recurrence)) throw new Error(this._text("Invalid repeat rule.", "Некорректное правило повторения."));
+    if (!["none", "daily", "weekly"].includes(recurrence)) throw new Error(this._text("error_repeat_rule"));
     const interval = recurrence === "none" ? 1 : Number(values.interval);
-    if (!Number.isInteger(interval) || interval < 1 || interval > 52) throw new Error(this._text("Repeat interval must be between 1 and 52.", "Интервал повторения должен быть от 1 до 52."));
+    if (!Number.isInteger(interval) || interval < 1 || interval > 52) throw new Error(this._text("error_repeat_interval"));
     const weekdays = [...new Set(values.weekdays || [])].map(Number);
     if (recurrence === "weekly" && (!weekdays.length || weekdays.some(day => !Number.isInteger(day) || day < 0 || day > 6))) {
-      throw new Error(this._text("Select days of the week.", "Выберите дни недели."));
+      throw new Error(this._text("error_weekdays_required"));
     }
     let summer = null;
     let limit = new Date(start);
@@ -843,19 +1196,19 @@ class OutlookCalendarCard extends HTMLElement {
         const holidays = await this._readPlanningCalendar(values.holidayCalendar, new Date(year, 5, 1), new Date(year, 8, 1));
         summer = holidays.filter(event => event.start.getFullYear() === year && event.start.getMonth() >= 5 && event.start.getMonth() <= 7)
           .sort((a, b) => a.start - b.start)[0];
-        if (!summer) throw new Error(this._text("No summer holiday event found. Select another calendar or set an end date.", "Летние каникулы не найдены. Выберите другой календарь или укажите дату окончания."));
+        if (!summer) throw new Error(this._text("error_summer_not_found"));
         limit = new Date(summer.start);
         limit.setHours(0, 0, 0, 0);
         limit.setDate(limit.getDate() - 1);
       } else {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.until || "")) throw new Error(this._text("Set a repeat end date.", "Укажите дату окончания повторений."));
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.until || "")) throw new Error(this._text("error_repeat_end_required"));
         limit = new Date(`${values.until}T00:00:00`);
       }
     }
     const horizon = new Date(start);
     horizon.setFullYear(horizon.getFullYear() + 2);
     if (!Number.isFinite(limit.getTime()) || limit > horizon || this._dateOrdinal(limit) < this._dateOrdinal(start)) {
-      throw new Error(this._text("Choose an end date after the start, within two years.", "Выберите окончание не раньше начала и не более чем через два года."));
+      throw new Error(this._text("error_repeat_horizon"));
     }
     const endDayOffset = this._dateOrdinal(end) - this._dateOrdinal(start);
     const monday = new Date(start);
@@ -879,9 +1232,9 @@ class OutlookCalendarCard extends HTMLElement {
         if (occurrenceEnd > summerDay) continue;
       }
       candidates.push({ start: occurrenceStart, end: occurrenceEnd });
-      if (candidates.length > 366) throw new Error(this._text("Limit the series to 366 dates or fewer.", "Сократите серию до 366 дат или меньше."));
+      if (candidates.length > 366) throw new Error(this._text("error_series_limit"));
     }
-    if (!candidates.length) throw new Error(this._text("No dates match this repeat rule.", "Нет дат, подходящих под правило повторения."));
+    if (!candidates.length) throw new Error(this._text("error_no_dates"));
     const excludedEntities = [...new Set(values.excludeCalendars || [])];
     const queryStart = new Date(candidates[0].start);
     queryStart.setHours(0, 0, 0, 0);
@@ -917,7 +1270,7 @@ class OutlookCalendarCard extends HTMLElement {
       if (completed.has(index)) continue;
       const task = plan.tasks[index];
       if (!this._writableCalendars().some(calendar => calendar.entity === task.entity)) {
-        throw new Error(`${this._text("Calendar is no longer writable", "Запись в календарь больше недоступна")}: ${this._calendarName(task.entity)}`);
+        throw new Error(`${this._text("calendar_no_longer_writable")}: ${this._calendarName(task.entity)}`);
       }
       await (this._hass || window.hass).callService("calendar", "create_event", task.data);
       completed.add(index);
@@ -943,23 +1296,23 @@ class OutlookCalendarCard extends HTMLElement {
   _eventInteractionAttrs(event) {
     this._renderedEvents ||= [];
     const index = this._renderedEvents.push(event) - 1;
-    const label = `${this._text("Open event", "Открыть событие")}: ${event.summary || ""}`;
+    const label = `${this._text("open_event")}: ${event.summary || ""}`;
     return `data-event-index="${index}" role="button" tabindex="0" aria-label="${this._escapeHtml(label)}"`;
   }
 
   _eventEditUnavailableReason(source) {
     const hass = this._hass || window.hass;
     if (!this._writableCalendars(4).some(calendar => calendar.entity === source?.entity)) {
-      return this._text("This calendar does not support editing or is unavailable.", "Календарь не поддерживает редактирование или недоступен.");
+      return this._text("error_edit_unavailable");
     }
     if (typeof source?.uid !== "string" || !source.uid) {
-      return this._text("The calendar did not provide an event ID for editing.", "Календарь не передал идентификатор события для редактирования.");
+      return this._text("error_event_id_missing");
     }
     if (source.rrule && !source.recurrence_id) {
-      return this._text("The calendar did not identify this occurrence. Edit the series in its calendar app.", "Календарь не указал идентификатор повторения. Измените серию в приложении календаря.");
+      return this._text("error_occurrence_id_missing");
     }
     if (typeof hass?.callWS !== "function") {
-      return this._text("The calendar update API is unavailable.", "API изменения событий недоступен.");
+      return this._text("error_update_api_unavailable");
     }
     return "";
   }
@@ -987,7 +1340,8 @@ class OutlookCalendarCard extends HTMLElement {
     const restoreFocus = document.activeElement;
     const calendars = this._writableCalendars();
     if (!editing && !calendars.length) return;
-    const text = (english, russian) => this._text(english, russian);
+    let buildingDialog = true;
+    const text = key => buildingDialog ? `__HA_CALENDAR_I18N_${key}__` : this._text(key);
     const escape = value => this._escapeHtml(value);
     const allCalendars = this._allCalendarEntities();
     const dialog = document.createElement("dialog");
@@ -1001,72 +1355,74 @@ class OutlookCalendarCard extends HTMLElement {
     const options = entities => entities.map(entity => `<option value="${escape(entity)}">${escape(this._calendarName(entity))}</option>`).join("");
     const checkboxes = (entities, name, selectFirst = false) => entities.map((entity, index) => `<label style="display:block;margin:6px 0;"><input type="checkbox" name="${name}" value="${escape(entity)}" ${selectFirst && index === 0 ? "checked" : ""}> ${escape(this._calendarName(entity))}</label>`).join("");
     const days = [
-      [1, text("Mon", "Пн")], [2, text("Tue", "Вт")], [3, text("Wed", "Ср")],
-      [4, text("Thu", "Чт")], [5, text("Fri", "Пт")], [6, text("Sat", "Сб")], [0, text("Sun", "Вс")]
+      [1, text("weekday_mon")], [2, text("weekday_tue")], [3, text("weekday_wed")],
+      [4, text("weekday_thu")], [5, text("weekday_fri")], [6, text("weekday_sat")], [0, text("weekday_sun")]
     ];
     dialog.innerHTML = `<form style="display:grid;gap:14px;">
-      <h2 style="margin:0;font-size:20px;">${editing ? text("Edit event", "Редактировать событие") : text("Add event", "Добавить событие")}</h2>
-      ${editing ? field(text("Event in calendar", "Событие в календаре"), `<select name="editSource">${sources.map((source, index) => `<option value="${index}" ${source === editSource ? "selected" : ""}>${escape(this._calendarName(source.entity))}</option>`).join("")}</select>`) + `<small>${text("Only the selected calendar entry and date are changed.", "Изменяется только эта дата и запись в выбранном календаре.")}</small><div data-edit-status role="status"></div>` : ""}
-      <div data-create-only>${field(text("Template", "Шаблон"), `<select name="template"><option value="">${text("Custom settings", "Свои настройки")}</option><option value="school">${text("School activity", "Учебное занятие")}</option></select>`)}</div>
-      <details data-create-only><summary>${text("Save these settings as a template", "Сохранить настройки как шаблон")}</summary>
+      <h2 style="margin:0;font-size:20px;">${editing ? text("edit_event") : text("add_event")}</h2>
+      ${editing ? field(text("event_calendar"), `<select name="editSource">${sources.map((source, index) => `<option value="${index}" ${source === editSource ? "selected" : ""}>${escape(this._calendarName(source.entity))}</option>`).join("")}</select>`) + `<small>${text("edit_scope_hint")}</small><div data-edit-status role="status"></div>` : ""}
+      <div data-create-only>${field(text("template"), `<select name="template"><option value="">${text("custom_settings")}</option><option value="school">${text("school_activity")}</option></select>`)}</div>
+      <details data-create-only><summary>${text("save_template_settings")}</summary>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-          <input name="templateName" aria-label="${text("Template name", "Название шаблона")}" placeholder="${text("Template name", "Название шаблона")}" maxlength="80" style="flex:1;">
-          <button type="button" data-save-template>${text("Save", "Сохранить")}</button>
-          <button type="button" data-delete-template disabled>${text("Delete", "Удалить")}</button>
-        </div><small>${text("Templates are saved in this browser for your Home Assistant user.", "Шаблоны сохраняются в этом браузере для вашего пользователя Home Assistant.")}</small>
+          <input name="templateName" aria-label="${text("template_name")}" placeholder="${text("template_name")}" maxlength="80" style="flex:1;">
+          <button type="button" data-save-template>${text("save")}</button>
+          <button type="button" data-delete-template disabled>${text("delete")}</button>
+        </div><small>${text("template_storage_hint")}</small>
       </details>
-      <fieldset data-create-only><legend>${text("Add to calendars", "Добавить в календари")}</legend>${checkboxes(calendars.map(calendar => calendar.entity), "destination", true)}</fieldset>
-      ${field(text("Title", "Название"), '<input name="summary" required maxlength="255" autofocus>')}
+      <fieldset data-create-only><legend>${text("add_to_calendars")}</legend>${checkboxes(calendars.map(calendar => calendar.entity), "destination", true)}</fieldset>
+      ${field(text("title"), '<input name="summary" required maxlength="255" autofocus>')}
       <div>
-        <div data-icon-fallback>${field(text("Event icon (optional)", "Иконка события (необязательно)"), '<input name="eventIcon" placeholder="mdi:tennis-ball" maxlength="120" autocomplete="off">')}</div>
+        <div data-icon-fallback>${field(text("event_icon"), '<input name="eventIcon" placeholder="mdi:tennis-ball" maxlength="120" autocomplete="off">')}</div>
         <div data-icon-picker hidden></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
           ${[
-            ["mdi:drama-masks", text("Theatre", "Театр")],
-            ["mdi:music", text("Music", "Музыка")],
-            ["mdi:tennis-ball", text("Tennis", "Теннис")],
-            ["mdi:sail-boat", text("Sailing", "Парусный спорт")],
-            ["mdi:soccer", text("Football", "Футбол")],
-            ["mdi:run", text("Running", "Бег")],
-            ["mdi:cat", text("Cat", "Кошка")],
-            ["mdi:dog", text("Dog", "Собака")],
-            ["mdi:school", text("School meeting", "Собрание в школе")],
-            ["", text("None", "Без иконки")]
+            ["mdi:drama-masks", text("icon_theatre")],
+            ["mdi:music", text("icon_music")],
+            ["mdi:tennis-ball", text("icon_tennis")],
+            ["mdi:sail-boat", text("icon_sailing")],
+            ["mdi:soccer", text("icon_football")],
+            ["mdi:run", text("icon_running")],
+            ["mdi:cat", text("icon_cat")],
+            ["mdi:dog", text("icon_dog")],
+            ["mdi:school", text("icon_school_meeting")],
+            ["", text("icon_none")]
           ].map(([icon, label]) => `<button type="button" data-icon-choice="${icon}" aria-label="${label}">${icon ? `${EVENT_ICON_UNICODE[icon]} ` : ""}${label}</button>`).join("")}
         </div>
         <div data-icon-title-preview style="margin-top:6px;"></div>
-        <small>${text("Known icons become Unicode in the title, e.g. 🎾 Tennis. A leading emoji selects its MDI icon. Other icons use [mdi:icon-name].", "Знакомые иконки сохраняются символами: 🎾 Теннис. Символ в начале названия выбирает MDI-иконку. Для остальных используется [mdi:имя-иконки].")}</small>
+        <small>${text("icon_unicode_hint")}</small>
       </div>
-      <label><input name="allDay" type="checkbox"> ${text("All day", "Весь день")}</label>
-      ${field(text("Start", "Начало"), `<input name="start" type="datetime-local" value="${this._localDateValue(start)}" required>`)}
-      ${field(text("End", "Окончание"), `<input name="end" type="datetime-local" value="${this._localDateValue(end)}" required>`)}
-      <small data-end-hint hidden>${text("For all-day events, end is the day after the last event day.", "Для событий на весь день окончание — день после последнего дня события.")}</small>
-      <div data-create-only>${field(text("Repeat", "Повторение"), `<select name="recurrence"><option value="none">${text("Does not repeat", "Не повторять")}</option><option value="weekly">${text("Weekly", "По неделям")}</option><option value="daily">${text("Daily", "По дням")}</option></select>`)}</div>
+      <label><input name="allDay" type="checkbox"> ${text("all_day")}</label>
+      ${field(text("start"), `<input name="start" type="datetime-local" value="${this._localDateValue(start)}" required>`)}
+      ${field(text("end"), `<input name="end" type="datetime-local" value="${this._localDateValue(end)}" required>`)}
+      <small data-end-hint hidden>${text("all_day_end_hint")}</small>
+      <div data-create-only>${field(text("repeat"), `<select name="recurrence"><option value="none">${text("repeat_none")}</option><option value="weekly">${text("repeat_weekly")}</option><option value="daily">${text("repeat_daily")}</option></select>`)}</div>
       <div data-repeat-settings hidden>
         ${field('<span data-interval-label></span>', '<input name="interval" type="number" min="1" max="52" value="1" required>')}
-        <fieldset data-weekdays><legend>${text("Days of the week", "Дни недели")}</legend><div style="display:flex;gap:10px;flex-wrap:wrap;">${days.map(([day, label]) => `<label><input name="weekday" type="checkbox" value="${day}" ${day === start.getDay() ? "checked" : ""}> ${label}</label>`).join("")}</div></fieldset>
-        <label style="display:block;margin:12px 0;"><input name="schoolYear" type="checkbox"> ${text("Until the end of the school year", "До конца учебного года")}</label>
-        <div data-until>${field(text("Repeat through (inclusive)", "Повторять по дату включительно"), `<input name="until" type="date" value="${this._localDateValue(defaultUntil, true)}">`)}</div>
+        <fieldset data-weekdays><legend>${text("weekdays")}</legend><div style="display:flex;gap:10px;flex-wrap:wrap;">${days.map(([day, label]) => `<label><input name="weekday" type="checkbox" value="${day}" ${day === start.getDay() ? "checked" : ""}> ${label}</label>`).join("")}</div></fieldset>
+        <label style="display:block;margin:12px 0;"><input name="schoolYear" type="checkbox"> ${text("school_year_end")}</label>
+        <div data-until>${field(text("repeat_until"), `<input name="until" type="date" value="${this._localDateValue(defaultUntil, true)}">`)}</div>
         <div data-school-year hidden>
-          ${field(text("School holiday calendar", "Календарь каникул"), `<select name="holidayCalendar"><option value="">${text("Select a calendar", "Выберите календарь")}</option>${options(allCalendars)}</select>`)}
-          <small>${text("Stops before the first event starting in June, July or August of this school year.", "До первого события, начинающегося в июне, июле или августе этого учебного года.")}</small>
+          ${field(text("holiday_calendar"), `<select name="holidayCalendar"><option value="">${text("select_calendar")}</option>${options(allCalendars)}</select>`)}
+          <small>${text("school_year_hint")}</small>
         </div>
       </div>
-      <details data-exclusions data-create-only><summary>${text("Skip days with events in other calendars", "Если не каникулы / не праздник")}</summary>
-        <fieldset><legend>${text("Skip a whole day if any of these calendars has an event", "Пропускать весь день, если есть событие в любом из календарей")}</legend>${checkboxes(allCalendars, "exclusion")}</fieldset>
+      <details data-exclusions data-create-only><summary>${text("skip_days")}</summary>
+        <fieldset><legend>${text("skip_days_hint")}</legend>${checkboxes(allCalendars, "exclusion")}</fieldset>
       </details>
-      ${field(text("Location", "Место"), '<input name="location">')}
-      ${field(text("Description", "Описание"), '<textarea name="description" rows="3"></textarea>')}
-      <small data-create-only>${text("Repeats are created as separate events. Holiday conditions are checked when preparing the series; later calendar changes do not update created events.", "Повторения создаются отдельными событиями. Условия проверяются при подготовке серии; последующие изменения календарей не изменяют созданные события.")}</small>
+      ${field(text("location"), '<input name="location">')}
+      ${field(text("description"), '<textarea name="description" rows="3"></textarea>')}
+      <small data-create-only>${text("series_conditions_hint")}</small>
       <div data-preview hidden aria-live="polite" style="border:1px solid var(--divider-color);border-radius:6px;padding:12px;"></div>
       <div role="status" data-progress aria-live="polite"></div>
       <div role="alert" data-error style="color:var(--error-color);" hidden></div>
       <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px;">
-        <button type="button" data-cancel>${text("Cancel", "Отмена")}</button>
-        <button type="button" data-plan>${text("Preview", "Предпросмотр")}</button>
-        <button type="submit">${text("Create", "Создать")}</button>
+        <button type="button" data-cancel>${text("cancel")}</button>
+        <button type="button" data-plan>${text("preview")}</button>
+        <button type="submit">${text("create")}</button>
       </div>
     </form>`;
+    buildingDialog = false;
+    const translateDialog = this._bindDialogTranslations(dialog);
     dialog.querySelectorAll("input:not([type=checkbox]), select, textarea, button").forEach(control => {
       const layout = control.style.cssText;
       control.style.cssText = `${layout}font:inherit;color:inherit;background:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:6px;padding:8px;min-width:0;box-sizing:border-box;`;
@@ -1105,7 +1461,7 @@ class OutlookCalendarCard extends HTMLElement {
     // Reuse Home Assistant's searchable picker when its component is loaded.
     if (customElements.get("ha-icon-picker")) {
       iconPicker = document.createElement("ha-icon-picker");
-      iconPicker.label = text("Event icon (optional)", "Иконка события (необязательно)");
+      iconPicker.label = text("event_icon");
       iconPicker.placeholder = "mdi:tennis-ball";
       iconPicker.addEventListener("value-changed", event => {
         if (busy || completed.size) return;
@@ -1127,8 +1483,8 @@ class OutlookCalendarCard extends HTMLElement {
       const repeating = !editing && controls.recurrence.value !== "none";
       dialog.querySelector("[data-repeat-settings]").hidden = !repeating;
       dialog.querySelector("[data-interval-label]").textContent = controls.recurrence.value === "weekly"
-        ? text("Repeat every N weeks", "Повторять каждые N недель")
-        : text("Repeat every N days", "Повторять каждые N дней");
+        ? text("repeat_interval_weeks")
+        : text("repeat_interval_days");
       dialog.querySelector("[data-weekdays]").hidden = controls.recurrence.value !== "weekly";
       dialog.querySelector("[data-until]").hidden = controls.schoolYear.checked;
       dialog.querySelector("[data-school-year]").hidden = !controls.schoolYear.checked;
@@ -1158,7 +1514,7 @@ class OutlookCalendarCard extends HTMLElement {
       plan = null;
       preview.hidden = true;
       progress.textContent = "";
-      submit.textContent = editing ? text("Save changes", "Сохранить изменения") : text("Create", "Создать");
+      submit.textContent = editing ? text("save_changes") : text("create");
       submit.disabled = editing && !!this._eventEditUnavailableReason(editSource);
     };
     form.addEventListener("input", event => {
@@ -1202,6 +1558,7 @@ class OutlookCalendarCard extends HTMLElement {
       if (busy) return;
       dialog.close();
       dialog.remove();
+      if (this._refreshDialogLanguage === refreshDialogLanguage) this._refreshDialogLanguage = null;
       if (editing && restoreFocus?.isConnected) restoreFocus.focus();
       else this.querySelector('[data-action="add"]')?.focus();
     };
@@ -1223,19 +1580,19 @@ class OutlookCalendarCard extends HTMLElement {
       updateVisibility();
     };
     const renderPreview = () => {
-      const date = value => value.toLocaleString(undefined, controls.allDay.checked ? { dateStyle: "medium" } : { dateStyle: "medium", timeStyle: "short" });
+      const date = value => value.toLocaleString(this._locale(), controls.allDay.checked ? { dateStyle: "medium" } : { dateStyle: "medium", timeStyle: "short", ...this._timeFormatOptions() });
       const title = this._parseEventTitle(controls.summary.value);
       const eventIcon = controls.eventIcon.value.trim() || title.eventIcon;
-      preview.innerHTML = `<div style="margin-bottom:6px;">${this._renderEventSummary({ summary: title.summary, eventIcon })}</div><strong>${text("Dates", "Дат")}: ${plan.accepted.length}; ${text("calendars", "календарей")}: ${plan.entities.length}; ${text("events to create", "записей к созданию")}: ${plan.tasks.length}</strong>
-        <div>${text("Skipped dates", "Пропущено дат")}: ${plan.skipped.length}</div>
-        ${plan.summer ? `<div>${text("Summer holidays start", "Начало летних каникул")}: ${escape(this._localDateValue(plan.summer.start, true))} — ${escape(plan.summer.summary)}</div>` : ""}
-        <details><summary>${text("Show dates", "Показать даты")}</summary><div style="max-height:200px;overflow:auto;">
+      preview.innerHTML = `<div style="margin-bottom:6px;">${this._renderEventSummary({ summary: title.summary, eventIcon })}</div><strong>${text("dates")}: ${plan.accepted.length}; ${text("calendars")}: ${plan.entities.length}; ${text("events_to_create")}: ${plan.tasks.length}</strong>
+        <div>${text("skipped_dates")}: ${plan.skipped.length}</div>
+        ${plan.summer ? `<div>${text("summer_starts")}: ${escape(this._localDateValue(plan.summer.start, true))} — ${escape(plan.summer.summary)}</div>` : ""}
+        <details><summary>${text("show_dates")}</summary><div style="max-height:200px;overflow:auto;">
         ${plan.accepted.map(item => `<div>${escape(date(item.start))} → ${escape(date(item.end))}</div>`).join("")}
-        ${plan.skipped.map(item => `<div>${escape(date(item.start))} — ${text("skipped", "пропущено")}: ${escape(item.reasons.map(reason => `${this._calendarName(reason.entity)}: ${reason.summary}`).join("; "))}</div>`).join("")}
+        ${plan.skipped.map(item => `<div>${escape(date(item.start))} — ${text("skipped")}: ${escape(item.reasons.map(reason => `${this._calendarName(reason.entity)}: ${reason.summary}`).join("; "))}</div>`).join("")}
         </div></details>`;
       preview.hidden = false;
       submit.disabled = !plan.tasks.length;
-      submit.textContent = `${text("Create", "Создать")} (${plan.tasks.length})`;
+      submit.textContent = `${text("create")} (${plan.tasks.length})`;
     };
     const prepare = async () => {
       if (!form.reportValidity()) return false;
@@ -1280,18 +1637,18 @@ class OutlookCalendarCard extends HTMLElement {
         }
         if (!plan.tasks.length) return;
         await this._writeEventPlan(plan, completed, (done, total) => {
-          progress.textContent = `${text("Created", "Создано")}: ${done} / ${total}`;
+          progress.textContent = `${text("created")}: ${done} / ${total}`;
         });
         setBusy(false);
         close();
         refresh();
       } catch (err) {
         error.textContent = completed.size
-          ? `${text("Created", "Создано")}: ${completed.size} / ${plan.tasks.length}. ${err?.message || String(err)}. ${text("Retry sends only remaining events. If a request timed out, check that event in the calendar before retrying.", "Повтор отправит только оставшиеся события. При тайм-ауте проверьте соответствующее событие в календаре перед повтором.")}`
+          ? `${text("created")}: ${completed.size} / ${plan.tasks.length}. ${err?.message || String(err)}. ${text("retry_hint")}`
           : err?.message || String(err);
         error.hidden = false;
         if (completed.size) {
-          submit.textContent = text("Retry remaining", "Повторить оставшиеся");
+          submit.textContent = text("retry_remaining");
           refresh();
         }
       } finally {
@@ -1356,7 +1713,7 @@ class OutlookCalendarCard extends HTMLElement {
     dialog.querySelector("[data-save-template]").onclick = () => {
       error.hidden = true;
       const name = controls.templateName.value.trim();
-      if (!name) { error.textContent = text("Enter a template name.", "Введите название шаблона."); error.hidden = false; return; }
+      if (!name) { error.textContent = text("error_template_name_required"); error.hidden = false; return; }
       const settings = values();
       const from = new Date(`${settings.start.slice(0, 10)}T12:00:00`);
       const to = new Date(`${settings.end.slice(0, 10)}T12:00:00`);
@@ -1373,16 +1730,16 @@ class OutlookCalendarCard extends HTMLElement {
         persistTemplates();
         populateTemplates();
         controls.template.value = `saved:${index >= 0 ? index : templates.length - 1}`;
-        progress.textContent = text("Template saved.", "Шаблон сохранён.");
+        progress.textContent = text("template_saved");
         updateVisibility();
-      } catch (err) { templates = previous; error.textContent = text("Could not save the template in this browser.", "Не удалось сохранить шаблон в этом браузере."); error.hidden = false; }
+      } catch (err) { templates = previous; error.textContent = text("error_template_save"); error.hidden = false; }
     };
     dialog.querySelector("[data-delete-template]").onclick = () => {
       if (!controls.template.value.startsWith("saved:")) return;
       const previous = templates.slice();
       templates.splice(Number(controls.template.value.slice(6)), 1);
       try { persistTemplates(); populateTemplates(); controls.template.value = ""; updateVisibility(); }
-      catch (err) { templates = previous; error.textContent = text("Could not delete the template.", "Не удалось удалить шаблон."); error.hidden = false; }
+      catch (err) { templates = previous; error.textContent = text("error_template_delete"); error.hidden = false; }
     };
     const populateEditSource = () => {
       controls.summary.value = editSource.rawSummary ?? this._eventSummaryWithIcon(editSource.summary, editSource.eventIcon);
@@ -1401,6 +1758,34 @@ class OutlookCalendarCard extends HTMLElement {
       invalidate();
       updateVisibility();
     };
+    const refreshDialogLanguage = () => {
+      const previous = CARD_TRANSLATIONS[dialog.lang.split("-")[0]] || CARD_TRANSLATIONS.en;
+      // Translate our own displayed errors; leave integration-provided messages intact.
+      if (!error.hidden) {
+        for (const [key, value] of Object.entries(previous).sort((a, b) => b[1].length - a[1].length)) {
+          if (error.textContent === value || error.textContent.startsWith(`${value}:`)) {
+            error.textContent = this._text(key) + error.textContent.slice(value.length);
+            break;
+          }
+        }
+        if (error.textContent.endsWith(previous.retry_hint)) {
+          error.textContent = error.textContent.slice(0, -previous.retry_hint.length) + text("retry_hint");
+        }
+      }
+      if (progress.textContent === previous.template_saved) progress.textContent = text("template_saved");
+      translateDialog();
+      if (iconPicker) iconPicker.label = text("event_icon");
+      updateVisibility();
+      if (!busy) {
+        if (plan) renderPreview();
+        else submit.textContent = editing ? text("save_changes") : text("create");
+        if (completed.size) {
+          progress.textContent = `${text("created")}: ${completed.size} / ${plan.tasks.length}`;
+          submit.textContent = text("retry_remaining");
+        }
+      }
+    };
+    this._refreshDialogLanguage = refreshDialogLanguage;
     populateTemplates();
     if (editing) {
       controls.editSource.onchange = () => {
@@ -1461,7 +1846,7 @@ class OutlookCalendarCard extends HTMLElement {
       }).join("");
       return `<div style="flex:1;min-width:0;border-left:1px solid var(--divider-color);padding:8px;${isToday ? "box-shadow:inset 0 0 0 2px var(--error-color);" : ""}">
         <div style="font-size:13px;font-weight:600;color:var(--secondary-text-color);margin-bottom:4px;">${this._escapeHtml(this._formatDateLabel(day))}</div>
-        ${items || '<div style="color:var(--secondary-text-color);font-size:11px;">No events</div>'}
+        ${items || `<div style="color:var(--secondary-text-color);font-size:11px;">${this._text("no_events")}</div>`}
       </div>`;
     }).join("");
     return `<div style="display:flex;border-top:1px solid var(--divider-color);">${out}</div>`;
@@ -1533,9 +1918,10 @@ class OutlookCalendarCard extends HTMLElement {
 
   renderTimeAxis(start, end, step) {
     return this._timeTicks(start, end, step).map(tick => {
-      const hours = String(Math.floor(tick.minutes / 60)).padStart(2, "0");
-      const minutes = String(tick.minutes % 60).padStart(2, "0");
-      return `<span style="position:absolute;top:${tick.top}%;left:4px;right:8px;transform:translateY(-50%);text-align:right;white-space:nowrap;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;color:var(--secondary-text-color);">${hours}:${minutes}</span>`;
+      const date = this._getActiveDate();
+      date.setHours(Math.floor(tick.minutes / 60), tick.minutes % 60, 0, 0);
+      const label = this._formatTimeLabel(date);
+      return `<span style="position:absolute;top:${tick.top}%;left:4px;right:8px;transform:translateY(-50%);text-align:right;white-space:nowrap;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;color:var(--secondary-text-color);">${this._escapeHtml(label)}</span>`;
     }).join("");
   }
 
@@ -1691,6 +2077,6 @@ if (!customElements.get("outlook-calendar-card")) {
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "outlook-calendar-card",
-  name: "Outlook style calendar",
-  description: "Time grid calendar with events like Outlook",
+  name: CARD_TRANSLATIONS.en.card_name,
+  description: CARD_TRANSLATIONS.en.card_description,
 });

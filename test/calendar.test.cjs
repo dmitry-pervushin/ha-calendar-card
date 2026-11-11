@@ -842,3 +842,160 @@ test('editing a Cyrillic title separates formerly merged copies', async () => {
   assert.equal(same.length, 1);
   dom.window.close();
 });
+
+test('English, Russian and French dictionaries cover every UI translation key', () => {
+  const { window, dom } = setup();
+  const translations = JSON.parse(source.match(/^const CARD_TRANSLATIONS = ([\s\S]*?);\n/)[1]);
+  const keys = Object.keys(translations.en).sort();
+  for (const language of ['ru', 'fr']) {
+    assert.deepEqual(Object.keys(translations[language]).sort(), keys);
+    assert.ok(Object.values(translations[language]).every(value => typeof value === 'string' && value.trim()));
+  }
+  const references = Array.from(source.matchAll(/(?:this\._text|\btext)\("([a-z_]+)"\)/g), match => match[1]);
+  assert.ok(references.every(key => keys.includes(key)));
+  dom.window.close();
+});
+
+test('navigation, empty state and create dialog follow the Home Assistant language', () => {
+  const { card, dom } = setup();
+  for (const [language, today, week, heading, noEvents, theatre, cancel] of [
+    ['en', 'Today', 'Week', 'Add event', 'No events', 'Theatre', 'Cancel'],
+    ['ru', 'Сегодня', 'Неделя', 'Добавить событие', 'Нет событий', 'Театр', 'Отмена'],
+    ['fr', 'Aujourd’hui', 'Semaine', 'Ajouter un événement', 'Aucun événement', 'Théâtre', 'Annuler']
+  ]) {
+    card.hass = { ...card.hass, locale: { language } };
+    card._setView('week');
+    card.render();
+    assert.equal(card.querySelector('[data-action="today"]').textContent, today);
+    assert.equal(card.querySelector('[data-view="week"]').textContent, week);
+    assert.ok(card.innerHTML.includes(noEvents));
+    card.querySelector('[data-action="add"]').click();
+    const dialog = card.querySelector('dialog');
+    assert.equal(dialog.lang, language);
+    assert.equal(dialog.querySelector('h2').textContent, heading);
+    assert.equal(dialog.querySelector('[data-cancel]').textContent, cancel);
+    assert.ok(dialog.querySelector('[data-icon-choice="mdi:drama-masks"]').textContent.includes(theatre));
+    assert.equal(dialog.innerHTML.includes('__HA_CALENDAR_I18N_'), false);
+    dialog.querySelector('[data-cancel]').click();
+  }
+  dom.window.close();
+});
+
+test('language codes support regional variants, legacy hass.language and English fallback', () => {
+  const { card, dom } = setup();
+  card.hass = { ...card.hass, locale: { language: 'fr_CA' }, language: 'ru' };
+  assert.equal(card._locale(), 'fr-CA');
+  assert.equal(card._labelToday(), 'Aujourd’hui');
+  card.hass = { ...card.hass, locale: undefined, language: 'ru-RU' };
+  assert.equal(card._locale(), 'ru-RU');
+  assert.equal(card._labelToday(), 'Сегодня');
+  for (const language of ['de-DE', 'invalid locale', '']) {
+    card.hass = { ...card.hass, locale: { language }, language: undefined };
+    assert.equal(card._locale(), 'en');
+    assert.equal(card._labelToday(), 'Today');
+  }
+  dom.window.close();
+});
+
+test('dates and month headers use Home Assistant locale rather than browser locale', () => {
+  const { card, dom } = setup();
+  const date = new Date(2026, 10, 11, 13, 5);
+  for (const language of ['en-GB', 'ru-RU', 'fr-FR', 'fr-CA']) {
+    card.hass = { ...card.hass, locale: { language } };
+    assert.equal(card._formatDateLabel(date), date.toLocaleDateString(language, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }));
+    card._setView('month');
+    assert.equal(card._getHeaderLabel(), card._getActiveDate().toLocaleDateString(language, { month: 'long', year: 'numeric' }));
+  }
+  dom.window.close();
+});
+
+test('time labels and time-axis width honor the Home Assistant 12/24-hour preference', () => {
+  const { card, dom } = setup();
+  const date = new Date(2026, 10, 11, 13, 5);
+  for (const [format, hour12, width] of [['12', true, '84px'], ['24', false, '56px']]) {
+    card.hass = { ...card.hass, locale: { language: 'en-US', time_format: format } };
+    card._setView('day');
+    card.render();
+    assert.equal(card._formatTimeLabel(date), date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12 }));
+    assert.ok(card.querySelector('[data-time-axis]').parentElement.style.gridTemplateColumns.startsWith(width));
+    assert.equal(card._uses12HourTime(), hour12);
+  }
+  dom.window.close();
+});
+
+test('switching language translates an open dialog without changing input or calendar names', () => {
+  const { card, dom } = setup();
+  card.hass.states['calendar.work'].attributes.friendly_name = 'Save';
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Music';
+  form.elements.description.value = 'Save';
+  const start = form.elements.start.value;
+  card.hass.locale.language = 'fr-FR';
+  card.hass = card.hass;
+  assert.equal(card.querySelector('form'), form);
+  assert.equal(card.querySelector('h2').textContent, 'Ajouter un événement');
+  assert.equal(card.querySelector('[data-cancel]').textContent, 'Annuler');
+  assert.equal(form.querySelector('[type="submit"]').textContent, 'Créer');
+  assert.equal(form.elements.summary.value, 'Music');
+  assert.equal(form.elements.description.value, 'Save');
+  assert.equal(form.elements.start.value, start);
+  assert.equal(card.querySelector('[data-icon-choice="mdi:cat"]').getAttribute('aria-label'), 'Chat');
+  assert.ok(form.querySelector('[name="destination"]').parentElement.textContent.includes('Save'));
+  assert.equal(card.querySelector('[data-action="today"]').textContent, 'Aujourd’hui');
+  assert.equal(card.querySelector('dialog').innerHTML.includes('__HA_CALENDAR_I18N_'), false);
+  form.querySelector('[data-cancel]').click();
+  assert.equal(card._refreshDialogLanguage, null);
+  dom.window.close();
+});
+
+test('French validation and read-only editing messages are localized', async () => {
+  const { card, dom } = setup();
+  await loadEditableEvent(card);
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  assert.throws(() => card._eventServiceData({ ...seriesValues(), entity: 'calendar.work', summary: '' }), /Saisissez un titre/);
+  assert.throws(() => card._eventServiceData({ ...seriesValues(), entity: 'calendar.work', end: '2026-11-14T09:00' }), /La fin doit être/);
+  card.hass.states['calendar.work'].attributes.supported_features = 1;
+  card.querySelector('[data-event-index]').click();
+  assert.equal(card.querySelector('h2').textContent, 'Modifier l’événement');
+  assert.match(card.querySelector('[data-edit-status]').textContent, /ne permet pas la modification/);
+  assert.equal(card.querySelector('[type="submit"]').textContent, 'Enregistrer les modifications');
+  dom.window.close();
+});
+
+test('an already prepared series can switch language and save without losing the plan', async () => {
+  const { card, window, dom } = setup();
+  addCalendar(card, 'calendar.family', true);
+  const writes = [];
+  card.hass.callService = async (_domain, _service, data) => writes.push(data);
+  card.loadEvents = async () => {};
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Tennis';
+  form.querySelector('[name="destination"][value="calendar.family"]').click();
+  form.querySelector('[data-plan]').click();
+  await tick();
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  assert.ok(card.querySelector('[data-preview]').textContent.includes('événements à créer'));
+  assert.equal(form.querySelector('[type="submit"]').textContent, 'Créer (2)');
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].summary, 'Tennis');
+  assert.equal(card.querySelector('dialog'), null);
+  dom.window.close();
+});
+
+test('displayed validation errors change language while preserving the entered title', async () => {
+  const { card, window, dom } = setup();
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = '🎾 ';
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(card.querySelector('[data-error]').textContent, 'Enter an event title.');
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  assert.equal(card.querySelector('[data-error]').textContent, 'Saisissez un titre pour l’événement.');
+  assert.equal(form.elements.summary.value, '🎾 ');
+  dom.window.close();
+});
