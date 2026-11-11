@@ -109,7 +109,8 @@ const CARD_TRANSLATIONS = {
     "error_invalid_field": "Check the field value.",
     "preparing_events": "Preparing events…",
     "preview_ready": "Check the preview, then click Create to confirm.",
-    "version": "Version"
+    "version": "Version",
+    "two_weeks": "2 weeks"
   },
   "ru": {
     "add_event": "Добавить событие",
@@ -221,7 +222,8 @@ const CARD_TRANSLATIONS = {
     "error_invalid_field": "Проверьте значение поля.",
     "preparing_events": "Подготовка событий…",
     "preview_ready": "Проверьте предпросмотр и нажмите «Создать» для подтверждения.",
-    "version": "Версия"
+    "version": "Версия",
+    "two_weeks": "2 недели"
   },
   "fr": {
     "add_event": "Ajouter un événement",
@@ -333,11 +335,12 @@ const CARD_TRANSLATIONS = {
     "error_invalid_field": "Vérifiez la valeur du champ.",
     "preparing_events": "Préparation des événements…",
     "preview_ready": "Vérifiez l’aperçu, puis cliquez sur Créer pour confirmer.",
-    "version": "Version"
+    "version": "Version",
+    "two_weeks": "2 semaines"
   }
 };
 
-const CARD_VERSION = "2026.11.11.2";
+const CARD_VERSION = "2026.11.11.3";
 
 const EVENT_ICON_UNICODE = Object.freeze({
   "mdi:drama-masks": "🎭",
@@ -481,7 +484,7 @@ class OutlookCalendarCard extends HTMLElement {
   }
 
   _setView(view) {
-    const allowed = ["day", "week", "month"];
+    const allowed = ["day", "week", "two-weeks", "month"];
     this._view = allowed.includes(view) ? view : "day";
   }
 
@@ -511,10 +514,10 @@ class OutlookCalendarCard extends HTMLElement {
   _getViewRange() {
     const base = this._getActiveDate();
     const view = this._getView();
-    if (view === "week") {
+    if (view === "week" || view === "two-weeks") {
       const start = this._getWeekStart(base);
       const end = new Date(start);
-      end.setDate(start.getDate() + 7);
+      end.setDate(start.getDate() + (view === "two-weeks" ? 14 : 7));
       return { start, end };
     }
     if (view === "month") {
@@ -536,7 +539,7 @@ class OutlookCalendarCard extends HTMLElement {
       const base = this._getActiveDate();
       return base.toLocaleDateString(this._locale(), { month: "long", year: "numeric" });
     }
-    if (view === "week") {
+    if (view === "week" || view === "two-weeks") {
       const { start, end } = this._getViewRange();
       const last = new Date(end);
       last.setDate(end.getDate() - 1);
@@ -556,8 +559,8 @@ class OutlookCalendarCard extends HTMLElement {
   _shiftRange(delta) {
     const next = this._getActiveDate();
     const view = this._getView();
-    if (view === "week") {
-      next.setDate(next.getDate() + delta * 7);
+    if (view === "week" || view === "two-weeks") {
+      next.setDate(next.getDate() + delta * (view === "two-weeks" ? 14 : 7));
     } else if (view === "month") {
       next.setMonth(next.getMonth() + delta);
     } else {
@@ -980,7 +983,7 @@ class OutlookCalendarCard extends HTMLElement {
     const labelPrev = this._labelPrevious();
     const labelNext = this._labelNext();
     o += `<ha-card lang="${this._locale()}">`;
-    o += `<div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--divider-color);">`;
+    o += `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--divider-color);">`;
     o += `<button type="button" data-action="prev" aria-label="${this._escapeHtml(labelPrev)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">◀</button>`;
     o += `<button type="button" data-action="today" aria-label="${this._escapeHtml(labelToday)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelToday)}</button>`;
     o += `<div style="flex:1;text-align:center;font-weight:600;">${this._escapeHtml(dateLabel)}</div>`;
@@ -988,6 +991,7 @@ class OutlookCalendarCard extends HTMLElement {
     o += `<div style="display:flex;gap:6px;">`;
     o += `<button type="button" data-view="day" aria-label="${this._escapeHtml(labelDay)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelDay)}</button>`;
     o += `<button type="button" data-view="week" aria-label="${this._escapeHtml(labelWeek)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelWeek)}</button>`;
+    o += `<button type="button" data-view="two-weeks" aria-label="${this._escapeHtml(this._text("two_weeks"))}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(this._text("two_weeks"))}</button>`;
     o += `<button type="button" data-view="month" aria-label="${this._escapeHtml(labelMonth)}" style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 8px;cursor:pointer;">${this._escapeHtml(labelMonth)}</button>`;
     o += `</div>`;
     const addLabel = this._text("add_event");
@@ -1009,6 +1013,12 @@ class OutlookCalendarCard extends HTMLElement {
       o += '</div></div>';
     } else if (view === "week") {
       o += this.renderWeekView(this._events || []);
+    } else if (view === "two-weeks") {
+      const firstWeek = this._getViewRange().start;
+      const secondWeek = new Date(firstWeek);
+      secondWeek.setDate(secondWeek.getDate() + 7);
+      o += `<div data-week-offset="0">${this.renderWeekView(this._events || [], firstWeek)}</div>`;
+      o += `<div data-week-offset="1">${this.renderWeekView(this._events || [], secondWeek)}</div>`;
     } else {
       o += this.renderMonthView(this._events || []);
     }
@@ -1960,8 +1970,7 @@ class OutlookCalendarCard extends HTMLElement {
     return ev.start < dayEnd && ev.end > dayStart;
   }
 
-  renderWeekView(events) {
-    const { start } = this._getViewRange();
+  renderWeekView(events, start = this._getViewRange().start) {
     const days = [];
     for (let i = 0; i < 7; i++) {
       const day = new Date(start);

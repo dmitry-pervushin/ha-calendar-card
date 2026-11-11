@@ -54,7 +54,7 @@ test('icons render as elements and summaries remain escaped in all views', async
   const { card, dom } = setup();
   await card.loadEvents(true);
   assert.equal(card._events.length, 1);
-  for (const view of ['day', 'week', 'month']) {
+  for (const view of ['day', 'week', 'two-weeks', 'month']) {
     card._setView(view);
     card.render();
     assert.ok(card.querySelector('ha-icon[icon="mdi:briefcase"]'), view);
@@ -207,7 +207,7 @@ test('calendar UI colors are read from registry options and reach event backgrou
   assert.equal(requests[0].entity_id, 'calendar.work');
   assert.equal(card._events[0].color, '#aabbcc');
   assert.equal(card._eventBackground(card._events[0]).background, '#aabbcc');
-  for (const view of ['day', 'week', 'month']) {
+  for (const view of ['day', 'week', 'two-weeks', 'month']) {
     card._setView(view);
     card.render();
     assert.ok(card.innerHTML.includes('background:#aabbcc'), view);
@@ -599,7 +599,7 @@ test('Unicode event icons survive loading, merge once and render alongside calen
   assert.equal(card._events.length, 1);
   assert.equal(card._events[0].eventIcons.length, 1);
   assert.equal(card._events[0].summary, '<Lesson>');
-  for (const view of ['day', 'week', 'month']) {
+  for (const view of ['day', 'week', 'two-weeks', 'month']) {
     card._setView(view);
     card.render();
     assert.equal(card.querySelectorAll('ha-icon[icon="mdi:tennis-ball"]').length, 1, view);
@@ -667,7 +667,7 @@ async function loadEditableEvent(card, overrides = {}) {
 test('clicking events opens prefilled editing in day, week and month views', async () => {
   const { card, dom } = setup();
   await loadEditableEvent(card);
-  for (const view of ['day', 'week', 'month']) {
+  for (const view of ['day', 'week', 'two-weeks', 'month']) {
     card._setView(view);
     card.render();
     const event = card.querySelector('[data-event-index]');
@@ -1160,7 +1160,7 @@ test('dialog columns keep event fields, planning and persistent actions in separ
   assert.ok(form.querySelector('[name="destination"]').closest('.calendar-choice-list'));
   assert.equal(form.querySelector('[data-dialog-body]').contains(form.querySelector('[type="submit"]')), false);
   assert.ok(form.querySelector('[type="submit"]').closest('[data-dialog-actions]'));
-  assert.match(form.querySelector('[data-card-version]').textContent, /2026\.11\.11\.2/);
+  assert.match(form.querySelector('[data-card-version]').textContent, /2026\.11\.11\.3/);
   dom.window.close();
 });
 
@@ -1219,5 +1219,59 @@ test('editing also supports Home Assistant non-iterable form collection', async 
   assert.equal(updates.length, 1);
   assert.equal(updates[0].event.summary, 'Changed');
   assert.equal(iterations(), 0);
+  dom.window.close();
+});
+
+test('two-week view loads this Monday through the end of next Sunday', async () => {
+  const { card, dom } = setup();
+  card.setConfig({ view: 'two-weeks', calendars: [{ entity: 'calendar.work' }] });
+  card._setActiveDate(new Date(2026, 10, 11));
+  const range = card._getViewRange();
+  assert.equal(card._localDateValue(range.start, true), '2026-11-09');
+  assert.equal(card._localDateValue(range.end, true), '2026-11-23');
+  let query;
+  card.hass.callApi = async (_method, path) => { query = new URL(path, 'https://ha.test'); return []; };
+  await card.loadEvents(true);
+  assert.equal(query.searchParams.get('start'), range.start.toISOString());
+  assert.equal(query.searchParams.get('end'), range.end.toISOString());
+  assert.ok(card._getHeaderLabel().includes(card._formatDateLabel(new Date(2026, 10, 22))));
+  dom.window.close();
+});
+
+test('two-week view shows separate weeks and events from both weeks with localized controls', async () => {
+  const { card, dom } = setup();
+  card.setConfig({ view: 'two-weeks', calendars: [{ entity: 'calendar.work' }] });
+  card.hass.callApi = async () => [
+    { uid: 'first', summary: 'This week', start: '2026-11-11T10:00:00', end: '2026-11-11T11:00:00' },
+    { uid: 'second', summary: 'Next week', start: '2026-11-18T10:00:00', end: '2026-11-18T11:00:00' }
+  ];
+  await card.loadEvents(true);
+  const first = card.querySelector('[data-week-offset="0"]');
+  const second = card.querySelector('[data-week-offset="1"]');
+  assert.equal(first.firstElementChild.children.length, 7);
+  assert.equal(second.firstElementChild.children.length, 7);
+  assert.ok(first.textContent.includes('This week'));
+  assert.equal(first.textContent.includes('Next week'), false);
+  assert.ok(second.textContent.includes('Next week'));
+  for (const [language, label] of [['en', '2 weeks'], ['ru', '2 недели'], ['fr', '2 semaines']]) {
+    card.hass = { ...card.hass, locale: { language } };
+    assert.equal(card.querySelector('[data-view="two-weeks"]').textContent, label);
+  }
+  dom.window.close();
+});
+
+test('two-week navigation crosses year boundaries and Today returns to the current week', () => {
+  const { card, dom } = setup();
+  card._setView('two-weeks');
+  card._setActiveDate(new Date(2026, 11, 31));
+  card.loadEvents = async () => {};
+  assert.equal(card._localDateValue(card._getViewRange().start, true), '2026-12-28');
+  assert.equal(card._localDateValue(card._getViewRange().end, true), '2027-01-11');
+  card._shiftRange(1);
+  assert.equal(card._localDateValue(card._getViewRange().start, true), '2027-01-11');
+  card._shiftRange(-1);
+  assert.equal(card._localDateValue(card._getViewRange().start, true), '2026-12-28');
+  card._goToday();
+  assert.equal(card._getViewRange().start.getTime(), card._getWeekStart(new Date()).getTime());
   dom.window.close();
 });
