@@ -261,54 +261,52 @@ class OutlookCalendarCard extends HTMLElement {
         icon: (this._hass || window.hass)?.states?.[cal.entity]?.attributes?.icon,
         supportedFeatures: (this._hass || window.hass)?.states?.[cal.entity]?.attributes?.supported_features,
         state: (this._hass || window.hass)?.states?.[cal.entity]?.state,
-        registryColor: (this._hass || window.hass)?.entities?.[cal.entity]?.color,
+        registryColor: (this._hass || window.hass)?.entities?.[cal.entity]?.options?.calendar?.color
+          || (this._hass || window.hass)?.entities?.[cal.entity]?.color,
         registryIcon: (this._hass || window.hass)?.entities?.[cal.entity]?.icon
       }))
     });
   }
 
+  _calendarCssColor(color) {
+    const themeColors = [
+      "primary", "accent", "red", "pink", "purple", "deep-purple", "indigo",
+      "blue", "light-blue", "cyan", "teal", "green", "light-green", "lime",
+      "yellow", "amber", "orange", "deep-orange", "brown", "light-grey",
+      "grey", "dark-grey", "blue-grey", "black", "white"
+    ];
+    return themeColors.includes(color) ? `var(--${color}-color)` : color;
+  }
+
   async _getCalendarColor(calendar) {
-    if (!this._config) return "var(--primary-color)";
-    if (calendar && calendar.color) return calendar.color;
+    if (calendar?.color) return calendar.color;
     const hass = this._hass || window.hass;
-    const entityId = calendar && calendar.entity;
-    const state = hass && hass.states && entityId ? hass.states[entityId] : null;
-    const attrs = state && state.attributes;
-    const attrColor = attrs ? attrs.color : null;
-    if (attrColor) return attrColor;
-    const initialColor = attrs ? attrs.initial_color : null;
-    if (initialColor) return initialColor;
-    const registryColor = hass && hass.entities && calendar
-      ? hass.entities[calendar.entity] && hass.entities[calendar.entity].color
-      : null;
-    if (registryColor) return registryColor;
-    if (this._config && this._config.debug) {
-      this._log("No color on state or hass.entities for", entityId, state);
-    }
-    if (!this._registryColorCache) {
-      this._registryColorCache = {};
-    }
-    if (entityId && this._registryColorCache[entityId]) {
-      return this._registryColorCache[entityId];
-    }
+    const entityId = calendar?.entity;
+    const attrs = hass?.states?.[entityId]?.attributes;
+    const attrColor = attrs?.color || attrs?.initial_color;
+    if (attrColor) return this._calendarCssColor(attrColor);
+    const entry = hass?.entities?.[entityId];
+    const registryColor = entry?.options?.calendar?.color || entry?.color;
+    if (registryColor) return this._calendarCssColor(registryColor);
     if (hass && typeof hass.callWS === "function" && entityId) {
       try {
         const reg = await hass.callWS({
           type: "config/entity_registry/get",
           entity_id: entityId
         });
-        if (reg && reg.color) {
-          this._registryColorCache[entityId] = reg.color;
-          return reg.color;
-        }
-        if (this._config && this._config.debug) {
-          this._log("Entity registry entry without color for", entityId, reg);
-        }
+        const color = reg?.options?.calendar?.color || reg?.color;
+        if (color) return this._calendarCssColor(color);
       } catch (err) {
-        this._log("Failed to fetch entity registry color", err);
+        this._log("Failed to fetch entity registry color", entityId, err);
       }
     }
-    return "var(--primary-color)";
+    // Match the built-in calendar's palette and alphabetical entity order.
+    const entityIds = Object.keys(hass?.states || {})
+      .filter(id => id.startsWith("calendar.")
+        && hass.states[id].state !== "unavailable" && !hass.entities?.[id]?.hidden)
+      .sort();
+    const index = Math.max(0, entityIds.indexOf(entityId));
+    return `var(--color-${index % 54 + 1}, var(--primary-color))`;
   }
 
   _normalizeCalendars(config) {

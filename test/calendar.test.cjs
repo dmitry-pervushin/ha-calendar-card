@@ -38,7 +38,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(card._getCalendarIcon({ ...calendar, prefix: '' }), '');
   assert.equal(card._getCalendarIcon({ ...calendar, prefix: 'Work: ' }), '');
   card._hass.states['calendar.work'].attributes.color = undefined;
-  assert.equal(await card._getCalendarColor(calendar), 'var(--primary-color)');
+  assert.equal(await card._getCalendarColor(calendar), 'var(--color-2, var(--primary-color))');
   dom.window.close();
 });
 
@@ -190,5 +190,54 @@ test('explicit calendar lists and empty lists override automatic discovery', () 
   assert.equal(card._calendars[0].entity, 'calendar.work');
   assert.equal(card._calendars[0].prefix, '');
   assert.equal(card._calendars[0].color, 'red');
+  dom.window.close();
+});
+
+test('calendar UI colors are read from registry options and reach event backgrounds', async () => {
+  const { card, dom } = setup();
+  delete card.hass.states['calendar.work'].attributes.color;
+  const requests = [];
+  let color = '#aabbcc';
+  card.hass.callWS = async message => {
+    requests.push(message);
+    return { options: { calendar: { color } } };
+  };
+  await card.loadEvents(true);
+  assert.equal(requests[0].type, 'config/entity_registry/get');
+  assert.equal(requests[0].entity_id, 'calendar.work');
+  assert.equal(card._events[0].color, '#aabbcc');
+  assert.equal(card._eventBackground(card._events[0]).background, '#aabbcc');
+  for (const view of ['day', 'week', 'month']) {
+    card._setView(view);
+    card.render();
+    assert.ok(card.innerHTML.includes('background:#aabbcc'), view);
+  }
+  color = '#112233';
+  await card.loadEvents(true);
+  assert.equal(card._events[0].color, '#112233');
+  dom.window.close();
+});
+
+test('theme colors in registry options use Home Assistant CSS variables', async () => {
+  const { card, dom } = setup();
+  delete card.hass.states['calendar.work'].attributes.color;
+  card.hass.entities = { 'calendar.work': { options: { calendar: { color: 'deep-orange' } } } };
+  assert.equal(await card._getCalendarColor(card._calendars[0]), 'var(--deep-orange-color)');
+  const key = card._configKey();
+  card.hass.entities['calendar.work'].options.calendar.color = 'blue-grey';
+  assert.notEqual(card._configKey(), key);
+  assert.equal(await card._getCalendarColor(card._calendars[0]), 'var(--blue-grey-color)');
+  assert.equal(await card._getCalendarColor({ entity: 'calendar.work', color: 'red' }), 'red');
+  dom.window.close();
+});
+
+test('registry errors fall back to distinct palette colors without losing events', async () => {
+  const { card, dom } = setup();
+  delete card.hass.states['calendar.work'].attributes.color;
+  card.hass.callWS = async () => { throw new Error('Not allowed'); };
+  await card.loadEvents(true);
+  assert.equal(card._events.length, 1);
+  assert.equal(card._events[0].color, 'var(--color-2, var(--primary-color))');
+  assert.equal(await card._getCalendarColor({ entity: 'calendar.readonly' }), 'var(--color-1, var(--primary-color))');
   dom.window.close();
 });
