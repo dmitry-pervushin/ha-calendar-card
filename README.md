@@ -73,4 +73,4 @@ The card is a standalone JavaScript module with its translations included. `hacs
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [0BSD License](LICENSE).

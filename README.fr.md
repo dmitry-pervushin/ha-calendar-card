@@ -179,4 +179,4 @@ La compatibilité avec `scoped-custom-element-registry` est vérifiée séparém
 
 ## Licence
 
-Distribué sous [licence MIT](LICENSE).
+Distribué sous [licence 0BSD](LICENSE).
