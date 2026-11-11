@@ -422,11 +422,30 @@ class OutlookCalendarCard extends HTMLElement {
       .trim();
   }
 
+  _eventTextColor(background) {
+    this._eventTextColors ||= new Map();
+    if (this._eventTextColors.has(background)) return this._eventTextColors.get(background);
+    // Let the browser resolve hex, RGB and theme CSS variables alike.
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;";
+    probe.style.color = background;
+    this.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    const white = /^rgba?\(255[, ]+255[, ]+255(?:\s*[,/]\s*1)?\)$/.test(resolved);
+    const color = white ? "#212121" : "white";
+    this._eventTextColors.set(background, color);
+    return color;
+  }
+
   _eventBackground(ev) {
     const colors = Array.isArray(ev.colors) ? ev.colors.filter(Boolean) : [];
+    const background = colors[0] || ev.color || "var(--primary-color)";
+    const textColor = this._eventTextColor(background);
     if (colors.length <= 1) {
       return {
-        background: colors[0] || ev.color || "var(--primary-color)",
+        background,
+        textColor,
         backgroundImage: ""
       };
     }
@@ -439,7 +458,8 @@ class OutlookCalendarCard extends HTMLElement {
       return `${color} ${start}px ${end}px`;
     }).join(", ");
     return {
-      background: colors[0] || ev.color || "var(--primary-color)",
+      background,
+      textColor,
       backgroundImage: `repeating-linear-gradient(45deg, ${stops})`
     };
   }
@@ -569,6 +589,7 @@ class OutlookCalendarCard extends HTMLElement {
     const hass = this._hass || window.hass;
     if (!hass) return;
 
+    this._eventTextColors = new Map();
     const start = this._config.start_hour;
     const end = this._config.end_hour;
     const step = this._config.step_minutes;
@@ -813,13 +834,13 @@ class OutlookCalendarCard extends HTMLElement {
       const items = dayEvents.map(ev => {
         if (ev.allDay) {
           const bg = this._eventBackground(ev);
-          return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">${this._renderEventTitle(ev)}</div>`;
+          return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">${this._renderEventTitle(ev)}</div>`;
         }
         const bg = this._eventBackground(ev);
         const timeLabel = this._formatTimeLabel(ev.start);
         const badgeText = `${this._escapeHtml(timeLabel)} ${this._renderEventPrefix(ev)}`;
         return `<div style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;">
-          <span style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:4px;padding:1px 4px;margin-right:4px;display:inline-block;">${badgeText}</span>
+          <span style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:4px;padding:1px 4px;margin-right:4px;display:inline-block;">${badgeText}</span>
           ${this._escapeHtml(ev.summary || ev.title)}
         </div>`;
       }).join("");
@@ -859,13 +880,13 @@ class OutlookCalendarCard extends HTMLElement {
         const items = dayEvents.map(ev => {
           if (ev.allDay) {
             const bg = this._eventBackground(ev);
-            return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">${this._renderEventTitle(ev)}</div>`;
+            return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">${this._renderEventTitle(ev)}</div>`;
           }
           const bg = this._eventBackground(ev);
           const timeLabel = this._formatTimeLabel(ev.start);
           const badgeText = `${this._escapeHtml(timeLabel)} ${this._renderEventPrefix(ev)}`;
           return `<div style="background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;padding:1px 4px;font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">
-            <span style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:4px;padding:0 3px;margin-right:3px;display:inline-block;">${badgeText}</span>
+            <span style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:4px;padding:0 3px;margin-right:3px;display:inline-block;">${badgeText}</span>
             ${this._escapeHtml(ev.summary || ev.title)}
           </div>`;
         }).join("");
@@ -932,7 +953,7 @@ class OutlookCalendarCard extends HTMLElement {
       const width = 100 / ev._columns;
       const left = width * ev._column;
       const bg = this._eventBackground(ev);
-      return `<div style="position:absolute;left:${left}%;width:${width}%;top:${top}%;height:${height}%;background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px;font-size:12px;box-sizing:border-box;overflow:hidden;">${this._renderEventTitle(ev)}</div>`;
+      return `<div style="position:absolute;left:${left}%;width:${width}%;top:${top}%;height:${height}%;background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px;font-size:12px;box-sizing:border-box;overflow:hidden;">${this._renderEventTitle(ev)}</div>`;
     }).join('');
     return o;
   }
@@ -944,7 +965,7 @@ class OutlookCalendarCard extends HTMLElement {
     }
     const items = allDay.map(ev => {
       const bg = this._eventBackground(ev);
-      return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:white;border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._renderEventTitle(ev)}</div>`;
+      return `<div style="background:${bg.background};background-image:${bg.backgroundImage};color:${bg.textColor};border-radius:6px;padding:2px 6px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._renderEventTitle(ev)}</div>`;
     }).join('');
     return `<div style="padding:6px;border-bottom:1px solid var(--divider-color);display:flex;flex-wrap:wrap;gap:6px;">${items}</div>`;
   }
