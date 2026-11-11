@@ -337,7 +337,7 @@ const CARD_TRANSLATIONS = {
   }
 };
 
-const CARD_VERSION = "2026.11.11.1";
+const CARD_VERSION = "2026.11.11.2";
 
 const EVENT_ICON_UNICODE = Object.freeze({
   "mdi:drama-masks": "🎭",
@@ -1485,6 +1485,8 @@ class OutlookCalendarCard extends HTMLElement {
     });
     const form = dialog.querySelector("form");
     const controls = form.elements;
+    // HA's scoped-registry polyfill exposes indexed controls but throws from its iterator.
+    const controlList = Array.prototype.slice.call(controls);
     const submit = dialog.querySelector('[type="submit"]');
     const preview = dialog.querySelector("[data-preview]");
     const error = dialog.querySelector("[data-error]");
@@ -1580,7 +1582,7 @@ class OutlookCalendarCard extends HTMLElement {
         dialog.querySelector("[data-plan]").hidden = true;
         const reason = this._eventEditUnavailableReason(editSource);
         dialog.querySelector("[data-edit-status]").textContent = reason;
-        Array.from(controls).forEach(control => {
+        controlList.forEach(control => {
           if (control.closest("[data-create-only]")) return;
           control.disabled = busy || (!!reason && control !== controls.editSource && control !== dialog.querySelector("[data-cancel]"));
         });
@@ -1624,7 +1626,7 @@ class OutlookCalendarCard extends HTMLElement {
       busy = active;
       if (active) dialog.dataset.saving = "true";
       else delete dialog.dataset.saving;
-      Array.from(controls).forEach(control => { control.disabled = active || completed.size > 0; });
+      controlList.forEach(control => { control.disabled = active || completed.size > 0; });
       if (iconPicker) iconPicker.disabled = active || completed.size > 0;
       if (!active) {
         submit.disabled = false;
@@ -1683,7 +1685,7 @@ class OutlookCalendarCard extends HTMLElement {
     const validate = () => {
       updateVisibility();
       clearFieldErrors();
-      let invalid = Array.from(controls).find(control => control.willValidate && !control.validity.valid);
+      let invalid = controlList.find(control => control.willValidate && !control.validity.valid);
       let semanticError = "";
       if (!invalid && !controls.summary.value.trim()) {
         invalid = controls.summary;

@@ -1160,6 +1160,64 @@ test('dialog columns keep event fields, planning and persistent actions in separ
   assert.ok(form.querySelector('[name="destination"]').closest('.calendar-choice-list'));
   assert.equal(form.querySelector('[data-dialog-body]').contains(form.querySelector('[type="submit"]')), false);
   assert.ok(form.querySelector('[type="submit"]').closest('[data-dialog-actions]'));
-  assert.match(form.querySelector('[data-card-version]').textContent, /2026\.11\.11\.1/);
+  assert.match(form.querySelector('[data-card-version]').textContent, /2026\.11\.11\.2/);
+  dom.window.close();
+});
+
+function installNonIterableFormCollection(window) {
+  const descriptor = Object.getOwnPropertyDescriptor(window.HTMLFormElement.prototype, 'elements');
+  let iterationAttempts = 0;
+  Object.defineProperty(window.HTMLFormElement.prototype, 'elements', {
+    configurable: true,
+    get() {
+      const native = descriptor.get.call(this);
+      const collection = { length: native.length, item(index) { return this[index] || null; } };
+      for (let index = 0; index < native.length; index++) {
+        const control = native.item(index);
+        collection[index] = control;
+        if (control.name && !['length', 'item', 'namedItem'].includes(control.name)) collection[control.name] = native.namedItem(control.name);
+      }
+      collection.namedItem = name => collection[name] || null;
+      collection[window.Symbol.iterator] = () => { iterationAttempts++; throw new Error('Method not implemented.'); };
+      return collection;
+    }
+  });
+  return () => iterationAttempts;
+}
+
+test('Home Assistant non-iterable form collection supports preview and creation', async () => {
+  const { card, window, dom } = setup();
+  const iterations = installNonIterableFormCollection(window);
+  card.hass = { ...card.hass, locale: { language: 'fr' } };
+  let writes = 0;
+  card.hass.callService = async () => { writes++; };
+  card.loadEvents = async () => {};
+  card._openEventDialog();
+  const form = card.querySelector('form');
+  form.elements.summary.value = '🎾';
+  await form.querySelector('[data-plan]').onclick();
+  assert.equal(card.querySelector('[data-preview]').hidden, false);
+  assert.equal(form.querySelector('[type="submit"]').disabled, false);
+  form.querySelector('[type="submit"]').click();
+  await tick();
+  assert.equal(writes, 1);
+  assert.equal(iterations(), 0);
+  assert.equal(card.querySelector('dialog'), null);
+  dom.window.close();
+});
+
+test('editing also supports Home Assistant non-iterable form collection', async () => {
+  const { card, window, dom } = setup();
+  const updates = await loadEditableEvent(card);
+  const iterations = installNonIterableFormCollection(window);
+  card.querySelector('[data-event-index]').click();
+  const form = card.querySelector('form');
+  form.elements.summary.value = 'Changed';
+  form.elements.summary.dispatchEvent(new window.Event('input', { bubbles: true }));
+  form.querySelector('[type="submit"]').click();
+  await tick();
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].event.summary, 'Changed');
+  assert.equal(iterations(), 0);
   dom.window.close();
 });
