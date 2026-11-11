@@ -1,7 +1,6 @@
 class OutlookCalendarCard extends HTMLElement {
   setConfig(config) {
     this._config = {
-      calendars: [],
       start_hour: 8,
       end_hour: 20,
       step_minutes: 60,
@@ -14,7 +13,7 @@ class OutlookCalendarCard extends HTMLElement {
       view: "day",
       ...config
     };
-    if (!Array.isArray(this._config.calendars)) {
+    if (Object.hasOwn(this._config, "calendars") && !Array.isArray(this._config.calendars)) {
       this._config.calendars = [];
     }
     this._calendars = this._normalizeCalendars(this._config);
@@ -27,6 +26,13 @@ class OutlookCalendarCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._config) {
+      const calendars = this._normalizeCalendars(this._config);
+      if (this._loadInFlight && JSON.stringify(calendars) !== JSON.stringify(this._calendars)) {
+        this._reloadAfterLoad = true;
+      }
+      this._calendars = calendars;
+    }
     this._scheduleLoad(false);
   }
 
@@ -306,6 +312,13 @@ class OutlookCalendarCard extends HTMLElement {
   }
 
   _normalizeCalendars(config) {
+    if (!Object.hasOwn(config, "calendars")) {
+      const hass = this._hass || window.hass;
+      return Object.keys(hass?.states || {})
+        .filter(entity => entity.startsWith("calendar."))
+        .sort()
+        .map(entity => ({ entity, color: null, prefix: null }));
+    }
     if (Array.isArray(config.calendars) && config.calendars.length > 0) {
       return config.calendars.map(entry => {
         if (entry && typeof entry === "object") {

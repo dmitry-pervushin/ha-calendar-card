@@ -146,3 +146,49 @@ test('errors keep the form editable and background rendering preserves user inpu
   assert.equal(form.elements.summary.disabled, false);
   dom.window.close();
 });
+
+test('omitting calendars discovers all calendar entities when hass arrives', async () => {
+  const { card, dom } = setup();
+  const hass = card.hass;
+  card._hass = undefined;
+  card.setConfig({});
+  assert.equal(card._calendars.length, 0);
+  hass.states['sensor.temperature'] = { state: '20', attributes: {} };
+  card.hass = hass;
+  assert.deepEqual(Array.from(card._calendars, calendar => calendar.entity), ['calendar.readonly', 'calendar.work']);
+  const requested = [];
+  hass.callApi = async (_method, path) => { requested.push(path); return []; };
+  await card.loadEvents(true);
+  assert.equal(requested.length, 2);
+  assert.ok(requested.some(path => path.startsWith('calendars/calendar.work?')));
+  assert.ok(requested.some(path => path.startsWith('calendars/calendar.readonly?')));
+  dom.window.close();
+});
+
+test('automatic selection follows calendars being added and removed', () => {
+  const { card, dom } = setup();
+  card.setConfig({});
+  const before = card._configKey();
+  const hass = card.hass;
+  hass.states['calendar.family'] = { state: 'off', attributes: { supported_features: 1 } };
+  delete hass.states['calendar.readonly'];
+  card.hass = hass;
+  assert.deepEqual(Array.from(card._calendars, calendar => calendar.entity), ['calendar.family', 'calendar.work']);
+  assert.notEqual(card._configKey(), before);
+  assert.equal(card._writableCalendars().length, 2);
+  dom.window.close();
+});
+
+test('explicit calendar lists and empty lists override automatic discovery', () => {
+  const { card, dom } = setup();
+  card.setConfig({ calendars: [] });
+  card.hass = card.hass;
+  assert.equal(card._calendars.length, 0);
+  card.setConfig({ calendars: [{ entity: 'calendar.work', prefix: '', color: 'red' }] });
+  card.hass = card.hass;
+  assert.equal(card._calendars.length, 1);
+  assert.equal(card._calendars[0].entity, 'calendar.work');
+  assert.equal(card._calendars[0].prefix, '');
+  assert.equal(card._calendars[0].color, 'red');
+  dom.window.close();
+});
