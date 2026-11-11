@@ -592,7 +592,9 @@ class OutlookCalendarCard extends HTMLElement {
     const view = this._getView();
     if (view === "day") {
       o += this.renderAllDayEvents(this._events || []);
-      o += `<div style="position:relative;height:${this._config.height}px;border-left:1px solid var(--divider-color);">`;
+      o += `<div style="display:grid;grid-template-columns:56px minmax(0, 1fr);padding:8px 0;">`;
+      o += `<div data-time-axis style="position:relative;height:${this._config.height}px;">${this.renderTimeAxis(start, end, step)}</div>`;
+      o += `<div data-time-grid style="position:relative;height:${this._config.height}px;border-left:1px solid var(--divider-color);">`;
       o += this.renderGrid(start, end, step);
       if (this._error) {
         o += `<div style="padding:8px;color:var(--error-color);font-size:12px;">Failed to load calendar events</div>`;
@@ -600,7 +602,7 @@ class OutlookCalendarCard extends HTMLElement {
         o += this.renderEvents(this._events || [], start, end);
       }
       o += this.renderNowLine(start, end);
-      o += '</div>';
+      o += '</div></div>';
     } else if (view === "week") {
       o += this.renderWeekView(this._events || []);
     } else {
@@ -876,31 +878,29 @@ class OutlookCalendarCard extends HTMLElement {
     return `<div style="display:grid;grid-template-columns:repeat(7, minmax(0, 1fr));gap:0;border-top:1px solid var(--divider-color);">${cells.join("")}</div>`;
   }
 
-  renderGrid(start, end, step) {
-    let out = '';
-    const steps = (end - start) * 60 / step;
-    for (let i = 0; i <= steps; i++) {
-      const totalMin = start * 60 + i * step;
-      const h = Math.floor(totalMin/60);
-      const m = totalMin % 60;
-
-     out += `<div style="
-        	  position:absolute;
-		  top:${(i/steps)*100}%;
-		  left:0;
-		  right:0;
-		  border-top:1px solid var(--divider-color);
-		  height:1px;
-	     "></div>
-	     <span style="
-		  position:absolute;
-  		  left:-42px;
-    		  top:${(i/steps)*100}%;
-  		  font-size:11px;
-  		  color:var(--secondary-text-color);
-	     ">${h}:${m.toString().padStart(2,'0')}</span>`;
+  _timeTicks(start, end, step) {
+    const duration = (end - start) * 60;
+    if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(step) || step <= 0) return [];
+    const ticks = [];
+    for (let minutes = 0; minutes < duration; minutes += step) {
+      ticks.push({ minutes: start * 60 + minutes, top: minutes / duration * 100 });
     }
-    return out;
+    ticks.push({ minutes: end * 60, top: 100 });
+    return ticks;
+  }
+
+  renderTimeAxis(start, end, step) {
+    return this._timeTicks(start, end, step).map(tick => {
+      const hours = String(Math.floor(tick.minutes / 60)).padStart(2, "0");
+      const minutes = String(tick.minutes % 60).padStart(2, "0");
+      return `<span style="position:absolute;top:${tick.top}%;left:4px;right:8px;transform:translateY(-50%);text-align:right;white-space:nowrap;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;color:var(--secondary-text-color);">${hours}:${minutes}</span>`;
+    }).join("");
+  }
+
+  renderGrid(start, end, step) {
+    return this._timeTicks(start, end, step).map(tick =>
+      `<div style="position:absolute;top:${tick.top}%;left:0;right:0;border-top:1px solid var(--divider-color);height:1px;"></div>`
+    ).join("");
   }
 
   renderEvents(events, start, end) {
