@@ -20,8 +20,6 @@ A calendar card with day, week, two-week and month views, event creation and edi
 
 Add `https://github.com/dmitry-pervushin/ha-calendar-card` as a custom repository in Home Assistant Marketplace, with type **Dashboard** (`plugin`). In older HACS versions, use **Custom repositories → Dashboard**. Install the card, then reload the browser.
 
-The repository must be public before Marketplace/HACS can install it. Preparing the repository does not automatically add it to the shared catalog.
-
 For YAML-managed dashboard resources, add this module if the installer did not add it automatically:
 
 ```yaml

@@ -8,7 +8,7 @@ Une carte de calendrier Home Assistant avec des vues jour, semaine, deux semaine
 
 ### Marketplace / HACS
 
-[Ouvrez ce dépôt dans Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin), ou ajoutez `https://github.com/dmitry-pervushin/ha-calendar-card` comme dépôt personnalisé de type **Tableau de bord** (`plugin`). Dans les anciennes versions de HACS, utilisez **Dépôts personnalisés → Tableau de bord**. Installez la carte, puis rechargez le navigateur. Le dépôt doit être public ; sa préparation ne l’ajoute pas automatiquement au catalogue commun.
+[Ouvrez ce dépôt dans Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin), ou ajoutez `https://github.com/dmitry-pervushin/ha-calendar-card` comme dépôt personnalisé de type **Tableau de bord** (`plugin`). Dans les anciennes versions de HACS, utilisez **Dépôts personnalisés → Tableau de bord**. Installez la carte, puis rechargez le navigateur.
 
 Marketplace ajoute normalement la ressource JavaScript automatiquement. Si vous gérez les ressources en YAML, ajoutez-la vous-même si nécessaire :
 

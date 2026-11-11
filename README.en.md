@@ -8,7 +8,7 @@ A Home Assistant calendar card with day, week, two-week and month views.
 
 ### Marketplace / HACS
 
-[Open this repository in Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin), or add `https://github.com/dmitry-pervushin/ha-calendar-card` as a custom repository with type **Dashboard** (`plugin`). In older HACS versions, use **Custom repositories → Dashboard**. Install the card and reload the browser. The repository must be public; preparing it does not automatically include it in the shared catalog.
+[Open this repository in Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin), or add `https://github.com/dmitry-pervushin/ha-calendar-card` as a custom repository with type **Dashboard** (`plugin`). In older HACS versions, use **Custom repositories → Dashboard**. Install the card and reload the browser.
 
 Marketplace normally adds the JavaScript resource automatically. With YAML-managed resources, add it yourself if necessary:
 

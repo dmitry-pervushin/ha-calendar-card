@@ -8,7 +8,7 @@
 
 ### Marketplace / HACS
 
-[Откройте репозиторий в Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin) или добавьте `https://github.com/dmitry-pervushin/ha-calendar-card` как пользовательский репозиторий типа **Dashboard** (`plugin`). В старых версиях HACS используйте **Custom repositories → Dashboard**. Установите карточку и перезагрузите браузер. Репозиторий должен быть публичным; подготовка не добавляет его автоматически в общий каталог.
+[Откройте репозиторий в Home Assistant Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=dmitry-pervushin&repository=ha-calendar-card&category=plugin) или добавьте `https://github.com/dmitry-pervushin/ha-calendar-card` как пользовательский репозиторий типа **Dashboard** (`plugin`). В старых версиях HACS используйте **Custom repositories → Dashboard**. Установите карточку и перезагрузите браузер.
 
 Marketplace обычно добавляет JavaScript-ресурс автоматически. При управлении ресурсами через YAML добавьте его вручную, если необходимо:
 
